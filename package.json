@@ -1,0 +1,16 @@
+{
+  "name": "ledgerflow",
+  "private": true,
+  "version": "1.0.0",
+  "description": "LedgerFlow — local-first personal finance (bank statements → ledgers → reports)",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File ./scripts/start-dev.ps1",
+    "dev:backend": "powershell -ExecutionPolicy Bypass -File ./scripts/start-backend.ps1",
+    "dev:frontend": "powershell -ExecutionPolicy Bypass -File ./scripts/start-frontend.ps1",
+    "dev:install": "powershell -ExecutionPolicy Bypass -File ./scripts/start-dev.ps1 -Install -NoBrowser",
+    "build:desktop": "powershell -ExecutionPolicy Bypass -File ./scripts/build-desktop.ps1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

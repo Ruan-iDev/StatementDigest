@@ -1,0 +1,64 @@
+{
+  "name": "ledgerflow-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LedgerFlow Windows desktop shell (Electron + local API)",
+  "main": "main.js",
+  "author": "LedgerFlow",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win portable",
+    "dist:nsis": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.ledgerflow.app",
+    "productName": "LedgerFlow",
+    "copyright": "Copyright © LedgerFlow",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/api",
+        "to": "api",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/ui",
+        "to": "ui",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "LedgerFlow-${version}-Portable.${ext}",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "LedgerFlow-${version}-Portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "artifactName": "LedgerFlow-Setup-${version}.${ext}"
+    }
+  }
+}

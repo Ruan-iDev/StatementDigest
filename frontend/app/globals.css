@@ -1,0 +1,317 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Soft grey canvas + vibrant neon accents (finance that feels alive) */
+  :root {
+    --background: 220 14% 92%;
+    --foreground: 222 22% 16%;
+    --card: 220 16% 97%;
+    --card-foreground: 222 22% 16%;
+    --primary: 262 85% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 12% 88%;
+    --secondary-foreground: 222 22% 18%;
+    --muted: 220 12% 88%;
+    --muted-foreground: 220 10% 40%;
+    --accent: 220 14% 90%;
+    --accent-foreground: 222 22% 16%;
+    --destructive: 0 78% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 12% 82%;
+    --input: 220 12% 82%;
+    --ring: 185 100% 42%;
+    --radius: 0.85rem;
+    --success: 152 80% 36%;
+    --warning: 38 95% 48%;
+    --danger: 0 78% 52%;
+
+    /* Neon hub accents */
+    --neon-cyan: 185 100% 48%;
+    --neon-magenta: 318 100% 58%;
+    --neon-lime: 145 100% 48%;
+    --neon-violet: 268 100% 68%;
+    --neon-amber: 42 100% 55%;
+    --neon-blue: 210 100% 58%;
+
+    --glow-cyan: 0 0 20px hsl(185 100% 48% / 0.35), 0 0 40px hsl(185 100% 48% / 0.12);
+    --glow-magenta: 0 0 20px hsl(318 100% 58% / 0.35), 0 0 40px hsl(318 100% 58% / 0.12);
+    --glow-lime: 0 0 20px hsl(145 100% 48% / 0.35), 0 0 40px hsl(145 100% 48% / 0.12);
+    --glow-violet: 0 0 20px hsl(268 100% 68% / 0.35), 0 0 40px hsl(268 100% 68% / 0.12);
+    --glow-amber: 0 0 20px hsl(42 100% 55% / 0.3), 0 0 40px hsl(42 100% 55% / 0.1);
+  }
+
+  .dark {
+    --background: 220 14% 11%;
+    --foreground: 210 20% 96%;
+    --card: 220 14% 15%;
+    --card-foreground: 210 20% 96%;
+    --primary: 268 95% 72%;
+    --primary-foreground: 260 40% 12%;
+    --secondary: 220 12% 18%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 220 12% 18%;
+    --muted-foreground: 215 12% 62%;
+    --accent: 220 12% 20%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 70% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 12% 22%;
+    --input: 220 12% 22%;
+    --ring: 185 100% 55%;
+    --success: 152 75% 48%;
+    --warning: 42 95% 55%;
+    --danger: 0 75% 58%;
+
+    --neon-cyan: 185 100% 55%;
+    --neon-magenta: 318 100% 65%;
+    --neon-lime: 145 100% 55%;
+    --neon-violet: 268 100% 75%;
+    --neon-amber: 42 100% 60%;
+    --neon-blue: 210 100% 65%;
+
+    --glow-cyan: 0 0 24px hsl(185 100% 55% / 0.45), 0 0 48px hsl(185 100% 55% / 0.18);
+    --glow-magenta: 0 0 24px hsl(318 100% 65% / 0.45), 0 0 48px hsl(318 100% 65% / 0.18);
+    --glow-lime: 0 0 24px hsl(145 100% 55% / 0.45), 0 0 48px hsl(145 100% 55% / 0.18);
+    --glow-violet: 0 0 24px hsl(268 100% 75% / 0.45), 0 0 48px hsl(268 100% 75% / 0.18);
+    --glow-amber: 0 0 24px hsl(42 100% 60% / 0.4), 0 0 48px hsl(42 100% 60% / 0.15);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, hsl(var(--neon-violet) / 0.08), transparent 50%),
+      radial-gradient(ellipse 60% 40% at 90% 0%, hsl(var(--neon-cyan) / 0.07), transparent 45%),
+      radial-gradient(ellipse 50% 30% at 50% 100%, hsl(var(--neon-magenta) / 0.05), transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  /* Electron frameless window: allow dragging the custom title bar */
+  .desktop-titlebar {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .desktop-titlebar .desktop-no-drag,
+  .desktop-titlebar button {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
+  .hub-tile {
+    @apply relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 bg-card p-6 transition-all duration-300;
+    @apply hover:-translate-y-1 hover:shadow-lg;
+  }
+
+  .hub-tile-icon {
+    @apply mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border-2;
+  }
+
+  .neon-cyan {
+    border-color: hsl(var(--neon-cyan) / 0.75);
+    box-shadow: var(--glow-cyan);
+  }
+  .neon-cyan .hub-tile-icon,
+  .neon-cyan-icon {
+    border-color: hsl(var(--neon-cyan));
+    color: hsl(var(--neon-cyan));
+    background: hsl(var(--neon-cyan) / 0.1);
+    box-shadow: inset 0 0 12px hsl(var(--neon-cyan) / 0.15);
+  }
+
+  .neon-magenta {
+    border-color: hsl(var(--neon-magenta) / 0.75);
+    box-shadow: var(--glow-magenta);
+  }
+  .neon-magenta .hub-tile-icon,
+  .neon-magenta-icon {
+    border-color: hsl(var(--neon-magenta));
+    color: hsl(var(--neon-magenta));
+    background: hsl(var(--neon-magenta) / 0.1);
+    box-shadow: inset 0 0 12px hsl(var(--neon-magenta) / 0.15);
+  }
+
+  .neon-lime {
+    border-color: hsl(var(--neon-lime) / 0.75);
+    box-shadow: var(--glow-lime);
+  }
+  .neon-lime .hub-tile-icon,
+  .neon-lime-icon {
+    border-color: hsl(var(--neon-lime));
+    color: hsl(var(--neon-lime));
+    background: hsl(var(--neon-lime) / 0.1);
+    box-shadow: inset 0 0 12px hsl(var(--neon-lime) / 0.15);
+  }
+
+  .neon-violet {
+    border-color: hsl(var(--neon-violet) / 0.75);
+    box-shadow: var(--glow-violet);
+  }
+  .neon-violet .hub-tile-icon,
+  .neon-violet-icon {
+    border-color: hsl(var(--neon-violet));
+    color: hsl(var(--neon-violet));
+    background: hsl(var(--neon-violet) / 0.1);
+    box-shadow: inset 0 0 12px hsl(var(--neon-violet) / 0.15);
+  }
+
+  .neon-amber {
+    border-color: hsl(var(--neon-amber) / 0.7);
+    box-shadow: var(--glow-amber);
+  }
+
+  .section-panel {
+    @apply rounded-2xl border-2 bg-card/90 p-5 backdrop-blur-sm;
+  }
+
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight text-foreground;
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-sm text-muted-foreground;
+  }
+
+  /* Upload queue row states */
+  .queue-row {
+    @apply flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors;
+  }
+
+  .queue-row-pending {
+    @apply border-border/70 bg-card/60 text-foreground;
+  }
+
+  .queue-row-processing {
+    @apply border-[hsl(var(--neon-amber)/0.75)] bg-[hsl(var(--neon-amber)/0.12)] text-foreground;
+    animation: queue-pulse 1.4s ease-in-out infinite;
+  }
+
+  .queue-row-processed {
+    @apply border-[hsl(var(--neon-lime)/0.65)] bg-[hsl(var(--neon-lime)/0.12)] text-foreground;
+  }
+
+  .queue-row-failed {
+    @apply border-destructive/50 bg-destructive/10 text-foreground;
+  }
+
+  .queue-status-badge {
+    @apply shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
+  }
+
+  .queue-status-pending {
+    @apply border-border bg-muted text-muted-foreground;
+  }
+
+  .queue-status-processing {
+    @apply border-[hsl(var(--neon-amber)/0.6)] bg-[hsl(var(--neon-amber)/0.2)] text-[hsl(var(--neon-amber))];
+  }
+
+  .queue-status-processed {
+    @apply border-[hsl(var(--neon-lime)/0.6)] bg-[hsl(var(--neon-lime)/0.18)] text-[hsl(var(--neon-lime))];
+  }
+
+  .queue-status-failed {
+    @apply border-destructive/50 bg-destructive/15 text-destructive;
+  }
+}
+
+@keyframes queue-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--neon-amber) / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 18px 2px hsl(var(--neon-amber) / 0.45);
+  }
+}
+
+/* Month section bands on Transactions */
+.tx-month-section {
+  @apply overflow-hidden rounded-2xl border border-border/70 bg-card/70 shadow-sm backdrop-blur-sm;
+}
+
+.tx-month-heading {
+  @apply relative flex flex-wrap items-end justify-between gap-3 border-b-2 px-5 py-4;
+  border-color: hsl(var(--neon-magenta) / 0.35);
+  background:
+    linear-gradient(
+      105deg,
+      hsl(var(--neon-magenta) / 0.12) 0%,
+      hsl(var(--neon-violet) / 0.08) 45%,
+      hsl(var(--card) / 0.9) 100%
+    );
+}
+
+.tx-month-heading::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 2px 0 0 2px;
+  background: linear-gradient(
+    180deg,
+    hsl(var(--neon-magenta)),
+    hsl(var(--neon-violet))
+  );
+  box-shadow: 0 0 12px hsl(var(--neon-magenta) / 0.45);
+}
+
+.tx-month-title {
+  @apply pl-2 text-lg font-semibold tracking-tight text-foreground;
+}
+
+.tx-month-meta {
+  @apply pl-2 text-xs text-muted-foreground;
+}
+
+.tx-month-stats {
+  @apply flex flex-wrap items-center gap-2 text-xs;
+}
+
+.tx-month-chip {
+  @apply rounded-full border px-2.5 py-0.5 font-medium tabular-nums;
+  border-color: hsl(var(--neon-magenta) / 0.35);
+  background: hsl(var(--neon-magenta) / 0.08);
+  color: hsl(var(--foreground));
+}
+
+/* Transaction list row — hover illumination (unallocated + allocated) */
+.tx-row {
+  @apply transition-[background-color,box-shadow] duration-150 ease-out;
+}
+
+.tx-row:hover {
+  background: hsl(var(--neon-magenta) / 0.08);
+  box-shadow: inset 3px 0 0 0 hsl(var(--neon-magenta) / 0.75);
+}
+
+.tx-row:hover .tx-row-card {
+  border-color: hsl(var(--neon-magenta) / 0.45);
+  background: hsl(var(--card) / 0.95);
+  box-shadow: 0 0 0 1px hsl(var(--neon-magenta) / 0.12), 0 0 18px hsl(var(--neon-magenta) / 0.12);
+}
+
+.dark .tx-row:hover {
+  background: hsl(var(--neon-magenta) / 0.12);
+}
+
+.dark .tx-row:hover .tx-row-card {
+  border-color: hsl(var(--neon-magenta) / 0.55);
+  background: hsl(var(--card) / 0.98);
+  box-shadow: 0 0 0 1px hsl(var(--neon-magenta) / 0.2), 0 0 22px hsl(var(--neon-magenta) / 0.18);
+}
+
+/* Dense data tables */
+.table-dense th,
+.table-dense td {
+  @apply px-2 py-1.5 text-sm;
+}

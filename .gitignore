@@ -1,0 +1,37 @@
+# Python
+backend/.venv/
+backend/venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+desktop/node_modules/
+desktop/dist/
+desktop/resources/
+
+# PyInstaller / packaging
+backend/packaging/build/
+backend/packaging/dist/
+backend/packaging/*.spec.bak
+
+# Local data (keep folder, ignore DB + uploads)
+data/*.db
+data/*.db-*
+data/uploads/*
+!data/uploads/.gitkeep
+!data/.gitkeep
+
+# Env / OS
+.env
+.env.local
+.DS_Store
+Thumbs.db
+*.log
+
+# Local update channel URL (may contain private host) — keep example only
+updates/channel.url

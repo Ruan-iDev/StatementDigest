@@ -1,0 +1,8 @@
+{
+  "version": "1.0.1",
+  "channel": "stable",
+  "publishedAt": "2026-08-04T12:00:00Z",
+  "releaseNotes": "Bug fixes and improvements for first testers.\n- Example note line 2",
+  "downloadUrl": "https://YOUR-HOST/releases/LedgerFlow-1.0.1-Portable.exe",
+  "sha256": ""
+}
