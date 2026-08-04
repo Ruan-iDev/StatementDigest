@@ -1,8 +1,8 @@
 {
-  "version": "1.0.1",
+  "version": "1.3.0",
   "channel": "stable",
   "publishedAt": "2026-08-04T12:00:00Z",
-  "releaseNotes": "Bug fixes and improvements for first testers.\n- Example note line 2",
-  "downloadUrl": "https://YOUR-HOST/releases/LedgerFlow-1.0.1-Portable.exe",
+  "releaseNotes": "LedgerFlow v1.3.0 — desktop polish: first-run journey, trial, multi-client workspace unlock, dashboard monthly chart, settings cleanup. See docs/RELEASE_NOTES.md.",
+  "downloadUrl": "https://YOUR-HOST/releases/LedgerFlow-1.3.0-Portable.exe",
   "sha256": ""
 }

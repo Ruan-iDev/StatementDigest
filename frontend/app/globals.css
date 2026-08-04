@@ -220,6 +220,83 @@
   .queue-status-failed {
     @apply border-destructive/50 bg-destructive/15 text-destructive;
   }
+
+  /* Sidebar: pulse Transactions when unallocated txs exist */
+  .nav-pulse-unallocated {
+    border-color: hsl(var(--neon-magenta) / 0.55) !important;
+    background: hsl(var(--neon-magenta) / 0.1);
+    color: hsl(var(--foreground));
+    animation: nav-tx-pulse 1.8s ease-in-out infinite;
+  }
+
+  .nav-unallocated-badge {
+    @apply ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums;
+    background: hsl(var(--neon-magenta) / 0.25);
+    color: hsl(var(--neon-magenta));
+    box-shadow: 0 0 10px hsl(var(--neon-magenta) / 0.35);
+  }
+}
+
+@keyframes nav-tx-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--neon-magenta) / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 16px 2px hsl(var(--neon-magenta) / 0.45);
+  }
+}
+
+/* Dashboard hub: pulse Transactions when unallocated > 0 */
+.hub-tile-pulse {
+  animation: hub-tx-pulse 1.9s ease-in-out infinite;
+  border-color: hsl(var(--neon-magenta) / 0.85) !important;
+}
+
+.hub-tile-icon-pulse {
+  animation: hub-tx-icon-pulse 1.9s ease-in-out infinite;
+}
+
+.hub-tile-badge-pulse {
+  animation: hub-tx-badge-pulse 1.9s ease-in-out infinite;
+}
+
+@keyframes hub-tx-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 hsl(var(--neon-magenta) / 0.25),
+      0 0 24px hsl(var(--neon-magenta) / 0.15);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px hsl(var(--neon-magenta) / 0.2),
+      0 0 36px hsl(var(--neon-magenta) / 0.4);
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes hub-tx-icon-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 12px hsl(var(--neon-magenta) / 0.15);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 16px hsl(var(--neon-magenta) / 0.35),
+      0 0 18px hsl(var(--neon-magenta) / 0.45);
+  }
+}
+
+@keyframes hub-tx-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
 }
 
 @keyframes queue-pulse {

@@ -58,7 +58,7 @@ Write-Host "  Version: $AppVersion"
 if ($UpdateManifestUrl) {
     Write-Host "  Update manifest: $UpdateManifestUrl"
 } else {
-    Write-Host "  Update manifest: (not set — Settings updates disabled until configured)" -ForegroundColor Yellow
+    Write-Host "  Update manifest: (not set - Settings updates disabled until configured)" -ForegroundColor Yellow
 }
 
 # Keep Electron package version in sync (app.getVersion + portable filename)
@@ -120,7 +120,8 @@ if (-not $SkipUi) {
     Write-Step "Building static UI (Next.js export) v$AppVersion"
     Push-Location $Frontend
     $env:LEDGERFLOW_DESKTOP = "1"
-    $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8000/api"
+    # Same-origin via Electron UI server proxy (/api -> 127.0.0.1:8000) — avoids cross-port fetch failures
+    $env:NEXT_PUBLIC_API_URL = "/api"
     $env:NEXT_PUBLIC_APP_VERSION = $AppVersion
     if ($UpdateManifestUrl) {
         $env:NEXT_PUBLIC_UPDATE_MANIFEST_URL = $UpdateManifestUrl

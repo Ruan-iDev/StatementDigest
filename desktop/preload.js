@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("ledgerflowDesktop", {
   windowMaximizeToggle: () => ipcRenderer.invoke("desktop:windowMaximizeToggle"),
   windowClose: () => ipcRenderer.invoke("desktop:windowClose"),
   windowIsMaximized: () => ipcRenderer.invoke("desktop:windowIsMaximized"),
+  setCloseAllowed: (allowed) => ipcRenderer.invoke("desktop:setCloseAllowed", !!allowed),
+  isCloseAllowed: () => ipcRenderer.invoke("desktop:isCloseAllowed"),
   onMaximizedChanged: (callback) => {
     if (typeof callback !== "function") return () => {};
     const handler = (_event, value) => callback(!!value);

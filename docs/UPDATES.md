@@ -1,21 +1,21 @@
 # App version & in-app updates
 
-> **Status (2026-08):** Footer version is live. **Settings → App updates is hidden** until the OTA/air-update channel is ready. Code remains in `frontend/components/app-updates-card.tsx`; re-enable from Settings when hosting is set up. Tracked in `docs/TODO.md`.
+> **Status (2026-08-04):** Current release **v1.3.0**. Footer version is live. **Settings → App updates is hidden** until the OTA/air-update channel is ready. Code remains in `frontend/components/app-updates-card.tsx`; re-enable from Settings when hosting is set up. Tracked in `docs/TODO.md`. Full changelog: [RELEASE_NOTES.md](./RELEASE_NOTES.md).
 
 ## Version in the UI
 
 | Where | What |
 |-------|------|
-| **Footer (right)** | `v1.0.0` — always visible for tester feedback |
-| **Settings → App updates** | Same version + **Check for updates** |
-| **API `/api/health`** | `"version": "1.0.0"` |
+| **Footer (right)** | `v1.3.0` — always visible for tester feedback |
+| **Settings → App updates** | Same version + **Check for updates** (hidden until OTA ready) |
+| **API `/api/health`** | `"version": "1.3.0"` (or `LEDGERFLOW_APP_VERSION`) |
 
-**Source of truth:** repo root file `VERSION` (one line, e.g. `1.0.1`).
+**Source of truth:** repo root file `VERSION` (one line, e.g. `1.3.0`).
 
 Bump it **before** every tester build:
 
 ```text
-VERSION          →  1.0.1
+VERSION          →  1.3.0
 ```
 
 `scripts/build-desktop.ps1` reads `VERSION` and injects:
@@ -82,7 +82,7 @@ Access-Control-Allow-Origin: *
 
 ## Dev (`npm run dev`)
 
-Footer shows `v1.0.0` from the fallback in `frontend/lib/version.ts` unless you set:
+Footer shows `v1.3.0` from the fallback in `frontend/lib/version.ts` unless you set:
 
 ```powershell
 $env:NEXT_PUBLIC_APP_VERSION = "1.0.1"

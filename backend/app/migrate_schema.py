@@ -152,6 +152,14 @@ def migrate_schema(engine) -> None:
                 conn.execute(
                     text("ALTER TABLE user_profiles ADD COLUMN attestation_seal VARCHAR(128)")
                 )
+            if "password_hash" not in cols:
+                conn.execute(
+                    text("ALTER TABLE user_profiles ADD COLUMN password_hash VARCHAR(500)")
+                )
+            if "workspace_username" not in cols:
+                conn.execute(
+                    text("ALTER TABLE user_profiles ADD COLUMN workspace_username VARCHAR(120)")
+                )
             if "profile_type" not in cols:
                 conn.execute(
                     text(

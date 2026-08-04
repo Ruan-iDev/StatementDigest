@@ -1,7 +1,8 @@
 # TODO — living backlog
 
-**Last updated:** 2026-07-31 (end of day)  
-**How to use:** Move items between sections as work finishes. Add new items from product conversations. After any session, update **Status snapshot**.
+**Last updated:** 2026-08-04 · **App version: 1.3.0**  
+**How to use:** Move items between sections as work finishes. Add new items from product conversations. After any session, update **Status snapshot**.  
+**Release notes:** [RELEASE_NOTES.md](./RELEASE_NOTES.md)
 
 ---
 
@@ -10,18 +11,22 @@
 | Area | Status |
 |------|--------|
 | Local app run (FE + BE) | Working (`run.py` default **no auto-reload** — set `LEDGERFLOW_RELOAD=1` for watch mode) |
-| Soft grey + neon hub UI | Done (v1) |
-| Auth (register / login / guest) | Done v1 |
-| Dashboard hubs | Done |
-| Settings sub-hubs | Done |
-| Bank profile wizard + **Update** sample | Done |
-| Multi user-profile workspaces | Done v1 |
-| Upload queue (multi-file, 1-by-1, toast) | Done v3 (scroll follow: top → mid → bottom) |
-| Transactions dual tabs + months | Done v1 (expand/collapse memory cleared on wipe) |
+| Portable EXE | **v1.3.0** `LedgerFlow-1.3.0-Portable.exe` |
+| Soft grey + neon hub UI | Done |
+| Auth (login / guest / first-time setup) | Done v1.3 |
+| Returning-user greet + simple login | Done v1.3 |
+| First-run 10-card guide | Done v1.3 |
+| 30-day trial → Option C read-only | Done v1.3 |
+| Dashboard hubs + shared monthly chart | Done v1.3 |
+| Settings five hubs + Preferences page | Done v1.3 |
+| Bank profile guided picker (calibrated) | Done v1.3 |
+| Multi user-profile workspaces | Done v1.3 (extra clients: workspace username + password on create + switch gate) |
+| Upload 3-step + success modal + pulse | Done v1.3 |
+| Transactions dual tabs + Assign to Ledger | Done v1.3 |
 | Parsers (4 locked islands) | **Discovery 226 · FNB 1000+ · Capitec sample · Nedbank sample** |
-| Reporting hub + monthly chart | Done v1 skeleton — **calibrate after Discovery data** |
+| Reporting hub + monthly chart | Done — **calibrate after Discovery data** |
 | P&L / PDF letterhead | Partial — polish after real data |
-| Product docs in `docs/` | Living — refreshed EOD 2026-07-31 |
+| Product docs in `docs/` | Living — refreshed 2026-08-04 |
 
 ---
 
@@ -97,6 +102,16 @@
 
 ### Multi-profile workspaces
 - [x] Profiles + isolation + sidebar switcher
+- [x] Primary profile = app login only; extra profiles = workspace username + password at create
+- [x] Full-app switch gate (credentials or Cancel → reload workspace data)
+- [x] Cascade delete of profile-owned data
+
+### Desktop product (v1.3.0)
+- [x] Frameless chrome + splash + first-time setup + app guide
+- [x] Trial Option C + license middleware
+- [x] Settings five hubs; Preferences route
+- [x] Dashboard uses shared `MonthlyComparisonChart`
+- [x] Portable **v1.3.0** package
 
 ### Distribution — installable apps (product targets)
 
@@ -106,7 +121,8 @@
 - [x] Data path remains on-device (`Documents/LedgerFlow/Data`)  
 - [x] Build script: `scripts/build-desktop.ps1` → portable `.exe`  
 - [x] Footer version (`VERSION` file → right side of footer)  
-- [ ] First successful portable build + smoke test on a clean PC  
+- [x] Portable builds through **v1.3.0**  
+- [ ] Smoke test on a clean PC (no prior Node/Python)  
 - [ ] Windows code signing (SmartScreen) before wider sharing  
 - [ ] Optional NSIS Setup installer; macOS / Linux later  
 - [ ] **Air / OTA updates** — re-enable Settings → App updates (`AppUpdatesCard`), host `latest.json` + channel URL, document publish flow (`docs/UPDATES.md`). UI is implemented but **hidden** until ready.  
@@ -135,7 +151,19 @@
 
 ---
 
-## Done (recent — 2026-07-31)
+## Done (recent — 2026-08-04 · v1.3.0)
+
+- [x] Desktop frameless + splash + first-time setup + 10-card guide
+- [x] Returning greet + simple themed login; force flags off for production
+- [x] 30-day trial → read-only Option C + key activation
+- [x] Extra client workspace username/password + full-app switch gate
+- [x] Profile delete FK cascade fix
+- [x] Settings five hubs; Preferences page; hide rules maintenance card
+- [x] Upload 3-step + pulse; Transactions Assign UX
+- [x] Dashboard monthly chart = Reporting chart (shared component)
+- [x] Release notes + version bump **1.3.0**
+
+## Done (earlier — 2026-07-31)
 
 - [x] Auth: free password + strength meter; guest login; Dashboard landing
 - [x] Capitec Business parser + fee UI + Bank Charges auto-fee siblings

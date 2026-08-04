@@ -92,6 +92,10 @@ class UserProfile(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Relative path under data/ (e.g. logos/profile_3.png) for business letterhead
     logo_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Extra client workspace credentials (set only when adding a profile on My Profile).
+    # Primary workspace from registration is protected by app login — no separate lock.
+    workspace_username: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     # Per-profile preferences
     fy_start_month: Mapped[int] = mapped_column(Integer, default=3)
     currency: Mapped[str] = mapped_column(String(10), default="ZAR")

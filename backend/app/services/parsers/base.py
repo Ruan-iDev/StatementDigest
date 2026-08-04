@@ -119,18 +119,30 @@ DISCOVERY_CSV_PRESET: dict[str, Any] = {
 
 def get_preset(bank_type: str) -> dict[str, Any]:
     bt = (bank_type or "").lower().strip()
-    if bt == "fnb":
-        return dict(FNB_CSV_PRESET)
-    if bt == "discovery":
-        return dict(DISCOVERY_CSV_PRESET)
+    if bt in ("fnb", "fnb gold business", "fnb_business", "fnb gold"):
+        cal = dict(FNB_CSV_PRESET)
+        cal["bank_family"] = "FNB"
+        cal["fnb_preset"] = True
+        return cal
+    if bt in ("discovery", "discovery personal", "discovery_personal", "discovery bank"):
+        cal = dict(DISCOVERY_CSV_PRESET)
+        cal["bank_family"] = "Discovery"
+        cal["discovery_preset"] = True
+        return cal
     if bt in ("capitec", "capitec business", "capitec_business"):
         from app.services.parsers.capitec_pdf import CAPITEC_BUSINESS_PRESET
 
-        return dict(CAPITEC_BUSINESS_PRESET)
+        cal = dict(CAPITEC_BUSINESS_PRESET)
+        cal["bank_family"] = "Capitec"
+        cal["capitec_preset"] = True
+        return cal
     if bt in ("nedbank", "nedbank personal", "nedbank_personal"):
         from app.services.parsers.nedbank_pdf import NEDBANK_PERSONAL_PRESET
 
-        return dict(NEDBANK_PERSONAL_PRESET)
+        cal = dict(NEDBANK_PERSONAL_PRESET)
+        cal["bank_family"] = "Nedbank"
+        cal["nedbank_preset"] = True
+        return cal
     return {
         "file_type": "csv",
         "delimiter": ",",
@@ -152,6 +164,54 @@ def get_preset(bank_type: str) -> dict[str, Any]:
         "exclude_balance_rows": True,
         "balance_row_markers": list(DEFAULT_BALANCE_MARKERS),
     }
+
+
+# Banks we have calibrated and approved for end users (no DIY calibration).
+# Only entries here appear in the "Which bank are you using?" dropdown.
+SUPPORTED_BANKS: list[dict[str, Any]] = [
+    {
+        "id": "discovery_personal",
+        "bank_type": "Discovery",
+        "label": "Discovery Bank — Personal",
+        "description": "Personal PDF statements. Calibrated and human-verified.",
+        "suggested_name": "Discovery Personal",
+        "formats": "PDF",
+    },
+    {
+        "id": "fnb_gold_business",
+        "bank_type": "FNB",
+        "label": "FNB — Gold Business",
+        "description": "Gold Business PDF statements. Calibrated and human-verified.",
+        "suggested_name": "FNB Gold Business",
+        "formats": "PDF",
+    },
+    {
+        "id": "capitec_business",
+        "bank_type": "Capitec",
+        "label": "Capitec — Business",
+        "description": "Business PDF statements (table layout with Fees column).",
+        "suggested_name": "Capitec Business",
+        "formats": "PDF",
+    },
+    {
+        "id": "nedbank_personal",
+        "bank_type": "Nedbank",
+        "label": "Nedbank — Personal",
+        "description": "Personal current-account PDF statements.",
+        "suggested_name": "Nedbank Personal",
+        "formats": "PDF",
+    },
+]
+
+
+def list_supported_banks() -> list[dict[str, Any]]:
+    """Public catalog for the bank-profile picker (no raw calibration payloads)."""
+    return [dict(row) for row in SUPPORTED_BANKS]
+
+
+def is_supported_bank_type(bank_type: str) -> bool:
+    bt = (bank_type or "").strip().lower()
+    return any((row["bank_type"] or "").lower() == bt for row in SUPPORTED_BANKS)
 
 
 def _resolve_column(row: dict[str, str] | list[str], key: Any) -> Optional[str]:

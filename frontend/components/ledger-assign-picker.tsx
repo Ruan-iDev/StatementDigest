@@ -55,7 +55,7 @@ export function LedgerAssignPicker({
   value,
   onChange,
   onAddNew,
-  placeholder = "Assign…",
+  placeholder = "Assign to Ledger…",
   disabled,
   className,
   size = "default",

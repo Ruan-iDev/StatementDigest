@@ -1,20 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileUp, ListChecks, Plus, Trash2, Upload } from "lucide-react";
+import {
+  ArrowLeft,
+  Building2,
+  Check,
+  CheckCircle2,
+  FileUp,
+  ListChecks,
+  Plus,
+  Sparkles,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { api, type BankProfile } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Modal } from "@/components/ui/modal";
 import { BankProfileWizard } from "@/components/bank-profile-wizard";
 import {
   UploadDisclaimerModal,
   type DisclaimerContent,
 } from "@/components/upload-disclaimer-modal";
 import { useUploadQueue, type QueueStatus } from "@/components/upload-queue-provider";
+import { useLicenseOptional } from "@/components/license-provider";
 import { cn } from "@/lib/utils";
 
 function statusLabel(s: QueueStatus): string {
@@ -34,6 +45,8 @@ export default function UploadPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queueListRef = useRef<HTMLUListElement>(null);
+  const license = useLicenseOptional();
+  const readOnly = Boolean(license?.readOnly);
 
   const {
     queue,
@@ -55,13 +68,24 @@ export default function UploadPage() {
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [disclaimer, setDisclaimer] = useState<DisclaimerContent | null>(null);
   const [disclaimerBusy, setDisclaimerBusy] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
+  const wasRunning = useRef(false);
+
+  const step1Done = !!profileId && (profiles?.length ?? 0) > 0;
+  const step2Done = queue.length > 0;
+  const step3Active = step1Done && step2Done;
+
+  const canUpload =
+    !!profileId &&
+    queue.length > 0 &&
+    !running &&
+    queue.some((q) => q.status === "pending" || q.status === "failed");
 
   const refreshProfiles = useCallback(async () => {
     const list = await api.bankProfiles.list();
     setProfiles(list);
     if (list.length) {
       setProfileId(
-        // Keep existing selection if still valid
         profileId && list.some((p) => String(p.id) === profileId)
           ? profileId
           : String(list[0].id)
@@ -80,20 +104,31 @@ export default function UploadPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
   }, []);
 
-  /**
-   * Queue scroll follow:
-   * 1) Start at the top (first rows).
-   * 2) Follow the active processing row downward.
-   * 3) Once that row would sit at mid-viewport, keep it mid-screen (auto-scroll).
-   * 4) Near the end, clamp to bottom so the last items stay in view — no jump-to-end thrash.
-   */
+  // Success modal when a processing run finishes with at least one success
+  useEffect(() => {
+    if (running) {
+      wasRunning.current = true;
+      return;
+    }
+    if (
+      wasRunning.current &&
+      !running &&
+      counts.processed > 0 &&
+      counts.pending === 0 &&
+      counts.processing === 0
+    ) {
+      setSuccessOpen(true);
+      wasRunning.current = false;
+    }
+  }, [running, counts.processed, counts.pending, counts.processing]);
+
+  // Queue auto-scroll while processing
   const lastScrollTargetRef = useRef<number>(-1);
   useEffect(() => {
     const list = queueListRef.current;
     if (!list || queue.length === 0) return;
 
     const processingIdx = queue.findIndex((q) => q.status === "processing");
-    // Prefer live processing row; when idle after a run, rest on last finished item
     let targetIdx = processingIdx;
     if (targetIdx < 0) {
       if (!running && (counts.processed > 0 || counts.failed > 0)) {
@@ -110,24 +145,17 @@ export default function UploadPage() {
 
     const maxScroll = Math.max(0, list.scrollHeight - list.clientHeight);
     if (maxScroll <= 0) {
-      // Entire queue fits — stay at top, no scrolling
       if (list.scrollTop !== 0) list.scrollTop = 0;
       lastScrollTargetRef.current = targetIdx;
       return;
     }
 
-    // Ideal: active row vertically centred in the list viewport
     const ideal = el.offsetTop + el.offsetHeight / 2 - list.clientHeight / 2;
-    // Early rows → clamp 0 (top). Late rows → clamp maxScroll (bottom).
     const top = Math.max(0, Math.min(ideal, maxScroll));
-
     const targetChanged = lastScrollTargetRef.current !== targetIdx;
     lastScrollTargetRef.current = targetIdx;
-
-    // Ignore tiny adjustments (avoids smooth-scroll fight / jitter)
     if (!targetChanged && Math.abs(list.scrollTop - top) < 8) return;
 
-    // Instant when stepping row-to-row (stable); smooth only for larger jumps
     const distance = Math.abs(list.scrollTop - top);
     list.scrollTo({
       top,
@@ -135,25 +163,22 @@ export default function UploadPage() {
     });
   }, [queue, running, counts.processed, counts.failed, counts.current]);
 
-  const canUpload =
-    !!profileId &&
-    queue.length > 0 &&
-    !running &&
-    queue.some((q) => q.status === "pending" || q.status === "failed");
-
   function onPickFiles(fileList: FileList | null) {
     addFiles(fileList);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  async function onUpload() {
+  async function onProcess() {
+    if (readOnly) {
+      setError("Read-only mode — uploads are locked until you enter an unlock key.");
+      return;
+    }
     if (!profiles?.length) {
       setWizardStartStep1(false);
       setWizardOpen(true);
       return;
     }
     if (!canUpload) return;
-    // Adding files does nothing yet — disclaimer only when starting process
     setDisclaimerBusy(true);
     setError(null);
     try {
@@ -179,7 +204,6 @@ export default function UploadPage() {
         user_agent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
       });
       setDisclaimerOpen(false);
-      // Fire-and-forget background process — user may navigate away
       void processQueue(profileId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not record acceptance");
@@ -188,152 +212,206 @@ export default function UploadPage() {
     }
   }
 
-  function onDisclaimerCancel() {
-    if (disclaimerBusy) return;
-    setDisclaimerOpen(false);
-  }
-
   if (profiles === null && !error) {
     return <p className="text-sm text-muted-foreground">Checking bank profiles…</p>;
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-[hsl(var(--neon-cyan))]">
             Import
           </p>
-          <h1 className="page-title">Upload Statement</h1>
+          <h1 className="page-title">Upload statements</h1>
           <p className="page-subtitle max-w-xl">
-            Choose a bank profile, add as many statements as you need, then upload. Processing runs
-            one file at a time in the background — you can leave this page while it works.
+            Three easy steps. We guide you — bank profile, files, then process.
           </p>
         </div>
         <Button type="button" variant="outline" onClick={() => router.push("/")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
+          Dashboard
         </Button>
       </div>
 
+      {/* Visual step rail */}
+      <div className="flex items-center justify-between gap-1 px-1 sm:gap-2">
+        <StepPill n={1} label="Bank" done={step1Done} active={!step1Done} accent="cyan" />
+        <div
+          className={cn(
+            "h-0.5 min-w-[1.5rem] flex-1 rounded-full transition-colors",
+            step1Done ? "bg-[hsl(var(--neon-cyan)/0.7)]" : "bg-border"
+          )}
+        />
+        <StepPill
+          n={2}
+          label="Files"
+          done={step2Done}
+          active={step1Done && !step2Done}
+          locked={!step1Done}
+          accent="violet"
+        />
+        <div
+          className={cn(
+            "h-0.5 min-w-[1.5rem] flex-1 rounded-full transition-colors",
+            step2Done ? "bg-[hsl(var(--neon-violet)/0.7)]" : "bg-border"
+          )}
+        />
+        <StepPill
+          n={3}
+          label="Process"
+          done={counts.processed > 0 && !running && counts.pending === 0}
+          active={step3Active && (running || canUpload)}
+          locked={!step3Active}
+          accent="lime"
+        />
+      </div>
+
       {profiles && profiles.length === 0 && (
-        <Card className="border-2 border-[hsl(var(--neon-amber)/0.5)] shadow-neon-amber">
-          <CardHeader>
-            <CardTitle>No bank profile yet</CardTitle>
-            <CardDescription>
-              Create a bank profile from a sample statement before importing.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              size="sm"
+        <div className="rounded-2xl border-2 border-[hsl(var(--neon-amber)/0.5)] bg-[hsl(var(--neon-amber)/0.08)] px-5 py-4">
+          <p className="font-medium">Bank profile required first</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Pick a calibrated bank and name the profile — then you can upload.
+          </p>
+          <Button
+            size="sm"
+            className="mt-3"
+            onClick={() => {
+              setWizardStartStep1(true);
+              setWizardOpen(true);
+            }}
+          >
+            Set up bank profile
+          </Button>
+        </div>
+      )}
+
+      {/* ── Step 1 ── */}
+      <section
+        className={cn(
+          "upload-step rounded-2xl border-2 p-5 transition-all",
+          step1Done
+            ? "border-[hsl(var(--neon-cyan)/0.45)] bg-[hsl(var(--neon-cyan)/0.06)]"
+            : "border-[hsl(var(--neon-cyan)/0.65)] bg-card shadow-[0_0_28px_hsl(var(--neon-cyan)/0.12)]"
+        )}
+      >
+        <StepHeader
+          n={1}
+          title="Select bank profile"
+          subtitle="Which bank’s statements are you importing?"
+          icon={<Building2 className="h-5 w-5" />}
+          done={step1Done}
+          accent="cyan"
+        />
+        <div className="mt-4 space-y-2">
+          <Label htmlFor="bank-profile">Bank profile</Label>
+          <Select
+            id="bank-profile"
+            value={profileId}
+            onChange={(e) => setProfileId(e.target.value)}
+            disabled={!profiles?.length || running}
+            className="h-11"
+          >
+            <option value="">Select your bank profile…</option>
+            {profiles?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.bank_type})
+              </option>
+            ))}
+          </Select>
+          {profiles && profiles.length > 0 && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              disabled={running}
               onClick={() => {
-                setWizardStartStep1(false);
+                setWizardStartStep1(true);
                 setWizardOpen(true);
               }}
             >
-              Create Bank Profile
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+              Set up another bank profile
+            </button>
+          )}
+        </div>
+      </section>
 
-      <Card className="neon-cyan border-2">
-        <CardHeader>
-          <CardTitle>Statement batch</CardTitle>
-          <CardDescription>
-            Select bank profile · add files · upload · navigate freely while the queue runs
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="bank-profile">Bank profile</Label>
-            <Select
-              id="bank-profile"
-              value={profileId}
-              onChange={(e) => setProfileId(e.target.value)}
-              disabled={!profiles?.length || running}
-            >
-              <option value="">Select…</option>
-              {profiles?.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.bank_type})
-                </option>
-              ))}
-            </Select>
-            {profiles && profiles.length > 0 && (
-              <button
-                type="button"
-                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                disabled={running}
-                onClick={() => {
-                  setWizardStartStep1(true);
-                  setWizardOpen(true);
-                }}
-              >
-                Create another bank profile
-              </button>
+      {/* Connector */}
+      <div className="flex justify-center">
+        <div
+          className={cn(
+            "h-8 w-0.5 rounded-full transition-colors",
+            step1Done ? "bg-[hsl(var(--neon-cyan)/0.5)]" : "bg-border/60"
+          )}
+        />
+      </div>
+
+      {/* ── Step 2 ── */}
+      <section
+        className={cn(
+          "upload-step rounded-2xl border-2 p-5 transition-all",
+          !step1Done && "pointer-events-none opacity-45",
+          step1Done && !step2Done &&
+            "border-[hsl(var(--neon-violet)/0.65)] bg-card shadow-[0_0_28px_hsl(var(--neon-violet)/0.12)]",
+          step2Done && "border-[hsl(var(--neon-violet)/0.45)] bg-[hsl(var(--neon-violet)/0.06)]"
+        )}
+      >
+        <StepHeader
+          n={2}
+          title="Add statements"
+          subtitle="Drop in one or many PDF / CSV files from that bank."
+          icon={<FileUp className="h-5 w-5" />}
+          done={step2Done}
+          accent="violet"
+        />
+        <div className="mt-4 space-y-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.pdf,.txt,.tsv"
+            multiple
+            className="hidden"
+            disabled={!step1Done || running || readOnly}
+            onChange={(e) => onPickFiles(e.target.files)}
+          />
+          <button
+            type="button"
+            disabled={!step1Done || running || readOnly}
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              "flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 transition-colors",
+              step1Done
+                ? "border-[hsl(var(--neon-violet)/0.45)] bg-[hsl(var(--neon-violet)/0.05)] hover:border-[hsl(var(--neon-violet)/0.7)] hover:bg-[hsl(var(--neon-violet)/0.1)]"
+                : "border-border bg-muted/30"
             )}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Statements</Label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,.pdf,.txt,.tsv"
-              multiple
-              className="hidden"
-              disabled={!profiles?.length || running}
-              onChange={(e) => onPickFiles(e.target.files)}
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={!profiles?.length || running}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add statements
-              </Button>
-              {queue.length > 0 && !running && (
-                <Button type="button" variant="ghost" size="sm" onClick={clearQueue}>
-                  Clear list
-                </Button>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Hold Ctrl (Windows) or Cmd (Mac) to multi-select. No file limit — files process one by
-              one.
-              {queue.length > 0 ? ` · ${queue.length} in queue` : ""}
-            </p>
-          </div>
+          >
+            <Plus className="h-8 w-8 text-[hsl(var(--neon-violet))]" />
+            <span className="text-sm font-medium">Click to add statements</span>
+            <span className="text-xs text-muted-foreground">
+              PDF or CSV · multi-select with Ctrl / Cmd
+            </span>
+          </button>
 
           {queue.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Queue
+                  {queue.length} file{queue.length === 1 ? "" : "s"} ready
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {counts.processed} processed
-                  {counts.processing ? ` · 1 processing` : ""}
-                  {counts.pending ? ` · ${counts.pending} pending` : ""}
-                  {counts.failed ? ` · ${counts.failed} failed` : ""}
-                  {counts.txs > 0 ? ` · ${counts.txs} transactions` : ""}
-                </p>
+                {!running && (
+                  <Button type="button" variant="ghost" size="sm" onClick={clearQueue}>
+                    Clear list
+                  </Button>
+                )}
               </div>
               <ul
                 ref={queueListRef}
-                className="relative max-h-[22rem] space-y-2 overflow-y-auto pr-1"
+                className="relative max-h-[16rem] space-y-2 overflow-y-auto pr-1"
                 aria-label="Statement upload queue"
               >
                 {queue.map((item, index) => (
                   <li
                     key={item.id}
                     data-queue-index={index}
-                    data-status={item.status}
                     className={cn(
                       "queue-row",
                       item.status === "pending" && "queue-row-pending",
@@ -384,76 +462,75 @@ export default function UploadPage() {
               </ul>
             </div>
           )}
+        </div>
+      </section>
 
-          {error && (
-            <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
-              {error}
-            </div>
+      <div className="flex justify-center">
+        <div
+          className={cn(
+            "h-8 w-0.5 rounded-full transition-colors",
+            step2Done ? "bg-[hsl(var(--neon-violet)/0.5)]" : "bg-border/60"
           )}
+        />
+      </div>
 
-          {running && (
-            <div className="rounded-xl border-2 border-[hsl(var(--neon-amber)/0.5)] bg-[hsl(var(--neon-amber)/0.1)] px-4 py-3 text-sm">
-              <p className="font-medium">
-                Background upload in progress — {counts.current}/{counts.total}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                You can leave this page. A spinner in the bottom-right keeps the counter visible.
-              </p>
-            </div>
-          )}
+      {/* ── Step 3 ── */}
+      <section
+        className={cn(
+          "upload-step rounded-2xl border-2 p-5 transition-all",
+          !step3Active && "pointer-events-none opacity-45",
+          step3Active &&
+            !running &&
+            "border-[hsl(var(--neon-lime)/0.65)] bg-card shadow-[0_0_28px_hsl(var(--neon-lime)/0.12)]",
+          running && "border-[hsl(var(--neon-amber)/0.65)] bg-[hsl(var(--neon-amber)/0.08)]"
+        )}
+      >
+        <StepHeader
+          n={3}
+          title="Process statements"
+          subtitle="Import transactions one file at a time. You can leave this page while it runs."
+          icon={<Upload className="h-5 w-5" />}
+          done={counts.processed > 0 && !running && counts.pending === 0}
+          accent="lime"
+        />
 
-          <div className="flex flex-wrap gap-2 border-t border-border/60 pt-4">
-            <Button type="button" variant="outline" onClick={() => router.push("/")}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-
-            <Button
-              type="button"
-              disabled={!canUpload || !profiles?.length || disclaimerBusy}
-              onClick={() => onUpload()}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {running ? "Uploading…" : disclaimerBusy ? "…" : "Upload"}
-            </Button>
-
-            <Link href="/pending" className="inline-flex">
-              <Button
-                type="button"
-                variant="secondary"
-                className="border-2 border-[hsl(var(--neon-magenta)/0.55)] bg-[hsl(var(--neon-magenta)/0.1)] shadow-[0_0_14px_hsl(var(--neon-magenta)/0.25)] hover:bg-[hsl(var(--neon-magenta)/0.18)]"
-              >
-                <ListChecks className="mr-2 h-4 w-4" />
-                View Processed transactions
-              </Button>
-            </Link>
+        {error && (
+          <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+            {error}
           </div>
+        )}
 
-          {counts.processed > 0 && !running && (
-            <div className="rounded-xl border-2 border-[hsl(var(--neon-lime)/0.45)] bg-[hsl(var(--neon-lime)/0.08)] px-4 py-3 text-sm">
-              <p className="font-medium">
-                Batch complete — {counts.processed} file(s) processed
-                {counts.failed ? `, ${counts.failed} failed` : ""}.
-              </p>
-              <p className="mt-1 text-muted-foreground">
-                {counts.txs} transaction(s) imported. Review them under Transactions.
-              </p>
-              <div className="mt-3">
-                <Link href="/pending">
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="border-2 border-[hsl(var(--neon-magenta)/0.55)] bg-[hsl(var(--neon-magenta)/0.15)] text-foreground shadow-[0_0_14px_hsl(var(--neon-magenta)/0.3)] hover:bg-[hsl(var(--neon-magenta)/0.25)]"
-                  >
-                    <FileUp className="mr-2 h-4 w-4" />
-                    Open transactions
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        {running && (
+          <div className="mt-4 rounded-xl border border-[hsl(var(--neon-amber)/0.5)] bg-[hsl(var(--neon-amber)/0.1)] px-4 py-3 text-sm">
+            <p className="font-medium">
+              Processing… {counts.current}/{counts.total}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              A toast stays visible if you navigate away.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            className="h-11 min-w-[12rem] gap-2 border-2 border-[hsl(var(--neon-lime)/0.5)] bg-[hsl(var(--neon-lime)/0.15)] text-foreground shadow-[0_0_18px_hsl(var(--neon-lime)/0.2)] hover:bg-[hsl(var(--neon-lime)/0.25)]"
+            disabled={readOnly || !canUpload || !profiles?.length || disclaimerBusy}
+            onClick={() => void onProcess()}
+          >
+            <Sparkles className="h-4 w-4" />
+            {readOnly
+              ? "Read-only — locked"
+              : running
+                ? "Processing…"
+                : disclaimerBusy
+                  ? "…"
+                  : counts.failed
+                    ? "Retry failed files"
+                    : "Process statements"}
+          </Button>
+        </div>
+      </section>
 
       <BankProfileWizard
         key={wizardStartStep1 ? "step1" : "gate"}
@@ -472,8 +549,164 @@ export default function UploadPage() {
         fileCount={queue.filter((q) => q.status === "pending" || q.status === "failed").length}
         busy={disclaimerBusy}
         onAccept={onDisclaimerAccept}
-        onCancel={onDisclaimerCancel}
+        onCancel={() => {
+          if (!disclaimerBusy) setDisclaimerOpen(false);
+        }}
       />
+
+      {/* ── Success modal ── */}
+      <Modal
+        open={successOpen}
+        onClose={() => setSuccessOpen(false)}
+        hideClose
+        className="max-w-md border-[hsl(var(--neon-lime)/0.55)] shadow-[0_0_40px_hsl(var(--neon-lime)/0.2)]"
+      >
+        <div className="space-y-5 px-1 py-2 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-[hsl(var(--neon-lime)/0.6)] bg-[hsl(var(--neon-lime)/0.12)] text-[hsl(var(--neon-lime))] shadow-[0_0_24px_hsl(var(--neon-lime)/0.35)]">
+            <CheckCircle2 className="h-9 w-9" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">Success</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {counts.failed === 0
+                ? "All statements were processed successfully."
+                : `${counts.processed} statement(s) processed successfully${
+                    counts.failed ? `, ${counts.failed} failed` : ""
+                  }.`}
+            </p>
+            {counts.txs > 0 && (
+              <p className="mt-2 text-sm font-medium text-foreground">
+                {counts.txs} transaction{counts.txs === 1 ? "" : "s"} ready to review.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button
+              type="button"
+              className="h-11 gap-2 border-2 border-[hsl(var(--neon-magenta)/0.55)] bg-[hsl(var(--neon-magenta)/0.15)] text-foreground shadow-[0_0_16px_hsl(var(--neon-magenta)/0.25)] hover:bg-[hsl(var(--neon-magenta)/0.25)]"
+              onClick={() => {
+                setSuccessOpen(false);
+                router.push("/pending");
+              }}
+            >
+              <ListChecks className="h-4 w-4" />
+              View transactions
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              onClick={() => {
+                setSuccessOpen(false);
+                router.push("/");
+              }}
+            >
+              Back to dashboard
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Tip: the Transactions menu item pulses when unallocated items need attention.
+          </p>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function StepPill({
+  n,
+  label,
+  done,
+  active,
+  locked,
+  accent,
+}: {
+  n: number;
+  label: string;
+  done?: boolean;
+  active?: boolean;
+  locked?: boolean;
+  accent: "cyan" | "violet" | "lime";
+}) {
+  const ring =
+    accent === "cyan"
+      ? "border-[hsl(var(--neon-cyan)/0.7)] text-[hsl(var(--neon-cyan))]"
+      : accent === "violet"
+        ? "border-[hsl(var(--neon-violet)/0.7)] text-[hsl(var(--neon-violet))]"
+        : "border-[hsl(var(--neon-lime)/0.7)] text-[hsl(var(--neon-lime))]";
+  const glow =
+    accent === "cyan"
+      ? "shadow-[0_0_14px_hsl(var(--neon-cyan)/0.35)]"
+      : accent === "violet"
+        ? "shadow-[0_0_14px_hsl(var(--neon-violet)/0.35)]"
+        : "shadow-[0_0_14px_hsl(var(--neon-lime)/0.35)]";
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition-all sm:px-3",
+        locked && "opacity-40",
+        done && "border-[hsl(var(--neon-lime)/0.5)] bg-[hsl(var(--neon-lime)/0.1)] text-foreground",
+        active && !done && cn(ring, "bg-card", glow),
+        !active && !done && !locked && "border-border text-muted-foreground"
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold",
+          done
+            ? "bg-[hsl(var(--neon-lime)/0.25)] text-[hsl(var(--neon-lime))]"
+            : active
+              ? "bg-foreground/10"
+              : "bg-muted"
+        )}
+      >
+        {done ? <Check className="h-3 w-3" /> : n}
+      </span>
+      <span className="hidden sm:inline">{label}</span>
+    </div>
+  );
+}
+
+function StepHeader({
+  n,
+  title,
+  subtitle,
+  icon,
+  done,
+  accent,
+}: {
+  n: number;
+  title: string;
+  subtitle: string;
+  icon: React.ReactElement;
+  done?: boolean;
+  accent: "cyan" | "violet" | "lime";
+}) {
+  const iconCls =
+    accent === "cyan"
+      ? "border-[hsl(var(--neon-cyan)/0.55)] bg-[hsl(var(--neon-cyan)/0.12)] text-[hsl(var(--neon-cyan))]"
+      : accent === "violet"
+        ? "border-[hsl(var(--neon-violet)/0.55)] bg-[hsl(var(--neon-violet)/0.12)] text-[hsl(var(--neon-violet))]"
+        : "border-[hsl(var(--neon-lime)/0.55)] bg-[hsl(var(--neon-lime)/0.12)] text-[hsl(var(--neon-lime))]";
+
+  return (
+    <div className="flex items-start gap-3">
+      <div
+        className={cn(
+          "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2",
+          iconCls
+        )}
+      >
+        {done ? <Check className="h-5 w-5" /> : icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Step {n}
+        </p>
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+      </div>
     </div>
   );
 }

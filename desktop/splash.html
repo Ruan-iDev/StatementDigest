@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LedgerFlow</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: #f4f6fa;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        /* allow window drag on frameless shell */
+        -webkit-app-region: drag;
+      }
+      .stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 2rem;
+        max-width: 36rem;
+      }
+      .logo {
+        width: min(220px, 42vw);
+        height: auto;
+        opacity: 0;
+        transform: scale(0.96);
+        transition: opacity 1.4s ease, transform 1.4s ease;
+        pointer-events: none;
+      }
+      .logo.in {
+        opacity: 1;
+        transform: scale(1);
+      }
+      .welcome {
+        margin-top: 1.75rem;
+        font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        opacity: 0;
+        transition: opacity 1.2s ease 0.35s;
+      }
+      .welcome.in {
+        opacity: 1;
+      }
+      .quote-wrap {
+        margin-top: 2.25rem;
+        min-height: 3.5rem;
+        max-width: 28rem;
+        padding: 0 1rem;
+      }
+      .quote {
+        font-size: clamp(0.9rem, 1.5vw, 1.05rem);
+        line-height: 1.55;
+        color: rgba(244, 246, 250, 0.62);
+        font-weight: 400;
+        font-style: italic;
+        opacity: 0;
+        transition: opacity 0.85s ease;
+      }
+      .quote.visible {
+        opacity: 1;
+      }
+      .hint {
+        position: absolute;
+        bottom: 2rem;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(244, 246, 250, 0.28);
+        opacity: 0;
+        transition: opacity 1s ease 1s;
+      }
+      .hint.in {
+        opacity: 1;
+      }
+      .close {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 44px;
+        height: 36px;
+        border: 0;
+        background: transparent;
+        color: rgba(244, 246, 250, 0.45);
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .close:hover {
+        background: #c42b1c;
+        color: #fff;
+      }
+      body.fade-out .shell {
+        opacity: 0;
+        transition: opacity 0.55s ease;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <button type="button" class="close" id="closeBtn" title="Close" aria-label="Close">
+        ×
+      </button>
+      <div class="stage">
+        <!-- Prefer PNG if you drop splash-logo.png next to this file; SVG is the built-in fallback -->
+        <img
+          id="logo"
+          class="logo"
+          alt="LedgerFlow"
+          src="splash-logo.png"
+          onerror="this.onerror=null;this.src='splash-logo.svg'"
+        />
+        <p id="welcome" class="welcome">Welcome</p>
+        <div class="quote-wrap">
+          <p id="quote" class="quote"></p>
+        </div>
+      </div>
+      <p id="hint" class="hint">Starting your private workspace…</p>
+    </div>
+    <script>
+      const QUOTES = [
+        "Clarity is a kind of wealth.",
+        "Small numbers, tended daily, become freedom.",
+        "You don’t need more noise — you need a clear ledger.",
+        "Order is not control. It is calm.",
+        "Your money has a story. Make it readable.",
+        "One quiet step at a time is still progress.",
+        "Privacy is a feature, not a luxury.",
+        "What you measure gently, you can improve gently.",
+        "Today’s books are tomorrow’s peace of mind.",
+        "Local data. Your rules. Your pace.",
+        "Chaos lives in the unknown. Light lives in the list.",
+        "A steady system beats a perfect plan.",
+        "Breathe. Balance follows attention.",
+        "The world can be loud. Your finances don’t have to be.",
+        "Begin simply. Depth comes later.",
+      ];
+
+      const logo = document.getElementById("logo");
+      const welcome = document.getElementById("welcome");
+      const quoteEl = document.getElementById("quote");
+      const hint = document.getElementById("hint");
+      const closeBtn = document.getElementById("closeBtn");
+
+      let current = "";
+
+      function pickQuote() {
+        if (QUOTES.length < 2) return QUOTES[0] || "";
+        let next = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+        let n = 0;
+        while (next === current && n < 6) {
+          next = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+          n += 1;
+        }
+        return next;
+      }
+
+      function showQuote() {
+        quoteEl.classList.remove("visible");
+        window.setTimeout(() => {
+          current = pickQuote();
+          quoteEl.textContent = current;
+          quoteEl.classList.add("visible");
+        }, 400);
+      }
+
+      // Fade logo + welcome in after paint
+      requestAnimationFrame(() => {
+        logo.classList.add("in");
+        welcome.classList.add("in");
+        hint.classList.add("in");
+        showQuote();
+      });
+
+      window.setInterval(showQuote, 6500);
+
+      closeBtn.addEventListener("click", () => {
+        try {
+          if (window.ledgerflowDesktop && window.ledgerflowDesktop.windowClose) {
+            window.ledgerflowDesktop.windowClose();
+            return;
+          }
+        } catch (_) {}
+        window.close();
+      });
+
+      // Soft fade when main process navigates away (best-effort)
+      window.addEventListener("beforeunload", () => {
+        document.body.classList.add("fade-out");
+      });
+    </script>
+  </body>
+</html>

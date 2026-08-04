@@ -12,6 +12,7 @@ from app.api import (
     disclaimers,
     imports,
     ledgers,
+    license as license_api,
     local_data,
     profiles,
     reports,
@@ -31,7 +32,7 @@ app_settings = get_settings()
 app = FastAPI(
     title="LedgerFlow API",
     description="Local-first personal finance: statements → ledgers → P&L",
-    version="1.0.0",
+    version="1.3.0",
 )
 
 app.add_middleware(
@@ -50,10 +51,19 @@ _AUTH_PUBLIC_EXACT = {
     "/api/auth/register",
     "/api/auth/guest",
     "/api/auth/suggest-password",
+    "/api/license/status",
+    "/api/license/activate",
     "/docs",
     "/openapi.json",
     "/redoc",
 }
+
+# Mutations always allowed for auth + license (even in read-only trial)
+_LICENSE_WRITE_ALWAYS = (
+    "/api/health",
+    "/api/auth/",
+    "/api/license/",
+)
 
 # Guest may call these non-GET endpoints only
 _GUEST_WRITE_ALLOWED = {
@@ -110,10 +120,42 @@ async def require_auth_middleware(request: Request, call_next):
     finally:
         db.close()
 
+    # Option C: after trial — allow viewing (GET) but block edits/exports until unlock
+    write_exempt = any(path == p or path.startswith(p) for p in _LICENSE_WRITE_ALWAYS)
+    if not write_exempt:
+        from app.database import SessionLocal as _SL
+        from app.license import get_license_status
+
+        ldb = _SL()
+        try:
+            st = get_license_status(ldb)
+            if st.read_only:
+                method = request.method.upper()
+                is_export = "/pdf" in path or path.rstrip("/").endswith("/export")
+                is_mutation = method not in ("GET", "HEAD", "OPTIONS")
+                if is_mutation or is_export:
+                    return JSONResponse(
+                        {
+                            "detail": (
+                                "Read-only mode: your 30-day tester access has ended. "
+                                "You can view your data, but changes and exports need an unlock key."
+                            ),
+                            "code": "trial_read_only",
+                            "days_remaining": st.days_remaining,
+                            "expired": True,
+                            "licensed": st.licensed,
+                            "read_only": True,
+                        },
+                        status_code=402,
+                    )
+        finally:
+            ldb.close()
+
     return await call_next(request)
 
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(license_api.router, prefix="/api")
 app.include_router(profiles.router, prefix="/api")
 app.include_router(disclaimers.router, prefix="/api")
 app.include_router(local_data.router, prefix="/api")
@@ -129,6 +171,15 @@ app.include_router(reports.router, prefix="/api")
 @app.on_event("startup")
 def on_startup() -> None:
     init_db()
+    # Silent trial start on first open of this install
+    from app.database import SessionLocal
+    from app.license import ensure_trial_started
+
+    db = SessionLocal()
+    try:
+        ensure_trial_started(db)
+    finally:
+        db.close()
 
 
 @app.get("/api/health")
@@ -136,7 +187,7 @@ def health():
     # Keep in sync with repo root VERSION (desktop builds may set LEDGERFLOW_APP_VERSION).
     import os
 
-    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "1.0.0").strip() or "1.0.0"
+    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "1.3.0").strip() or "1.3.0"
     return {
         "status": "ok",
         "app": "LedgerFlow",

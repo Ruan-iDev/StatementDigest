@@ -117,8 +117,8 @@ export default function BankProfilesPage() {
           </p>
           <h1 className="page-title">Setup Bank Profile</h1>
           <p className="text-sm text-muted-foreground">
-            A bank profile teaches LedgerFlow how to read your statement. Create one from a real
-            sample — or <strong>Update</strong> if the bank changes its layout.
+            Choose a bank we already support, name the profile, and upload. Calibration is our job —
+            you never map columns or teach layouts.
           </p>
         </div>
         <div className="flex gap-2">
@@ -135,7 +135,7 @@ export default function BankProfilesPage() {
           >
             Refresh list
           </Button>
-          <Button onClick={openCreate}>Create Bank Profile</Button>
+          <Button onClick={openCreate}>Set up bank profile</Button>
         </div>
       </div>
 
@@ -154,8 +154,8 @@ export default function BankProfilesPage() {
         <CardHeader>
           <CardTitle>Saved profiles</CardTitle>
           <CardDescription>
-            Used when you upload statements. Use <strong>Update</strong> with a new sample if a bank
-            redesigns their PDF/CSV — the <strong>Updated</strong> date refreshes when you save.
+            Used when you upload statements. <strong>Update</strong> refreshes our locked
+            calibration for that bank (no sample needed).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -164,10 +164,10 @@ export default function BankProfilesPage() {
           ) : profiles.length === 0 ? (
             <div className="space-y-3 py-2">
               <p className="text-sm text-muted-foreground">
-                None yet. Upload a sample statement to create your first profile.
+                None yet. Pick your bank from our calibrated list to create your first profile.
               </p>
               <Button size="sm" onClick={openCreate}>
-                Create Bank Profile
+                Set up bank profile
               </Button>
             </div>
           ) : (
@@ -198,7 +198,7 @@ export default function BankProfilesPage() {
                           className="gap-1"
                           disabled={deletingId === p.id}
                           onClick={() => openUpdate(p)}
-                          title="Re-learn layout from a new sample statement"
+                          title="Refresh calibration from LedgerFlow’s locked preset for this bank"
                         >
                           <RefreshCw className="h-3.5 w-3.5" />
                           Update
@@ -230,8 +230,8 @@ export default function BankProfilesPage() {
         onSaved={() => {
           setMessage(
             editProfile
-              ? `Updated “${editProfile.name}” — layout refreshed and Updated date set.`
-              : "Bank profile saved."
+              ? `Updated “${editProfile.name}” — calibration refreshed.`
+              : "Bank profile saved. You can upload statements now."
           );
           refresh().catch(() => undefined);
         }}

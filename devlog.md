@@ -5,9 +5,9 @@ Hours are **focused development time** for that calendar day (design + build + d
 
 | Metric | Value |
 |--------|------:|
-| **Total hours (all days)** | **12.0** |
-| **Days logged** | 1 |
-| **Last updated** | 2026-07-31 (EOD) |
+| **Total hours (all days)** | **~40+** (estimate across multi-session desktop product work) |
+| **Days logged** | 2+ |
+| **Last updated** | 2026-08-04 · **v1.3.0** |
 
 ---
 
@@ -21,6 +21,39 @@ Hours are **focused development time** for that calendar day (design + build + d
 ---
 
 ## Log
+
+### 2026-08-04
+
+**Hours:** multi-session (desktop product track through v1.3.0)  
+**Who:** Solo  
+**Release:** **LedgerFlow v1.3.0** portable EXE  
+
+#### Desktop shell
+- Frameless window, custom titlebar, splash (logo + quotes, ≥6s)  
+- API proxy `/api`, free port, process-tree kill on quit  
+- Portable build pipeline + version sync from `VERSION`  
+
+#### First-run & auth
+- FirstTimeSetup multi-step; 10-card How to use guide  
+- Returning user: Welcome back + simple themed login  
+- Force first-time flags off for production builds  
+
+#### Trial & license
+- 30-day silent trial; Option C read-only after expiry  
+- Offline key activation  
+
+#### Multi-client workspaces
+- Primary profile = app login; extra profiles = workspace username + password at create  
+- Full-app switch gate; cascade profile delete  
+- Removed mistaken “set workspace password on any profile” form  
+
+#### Product UX
+- Settings → five hubs + Preferences page  
+- Upload 3-step + unallocated pulse  
+- Dashboard shares Reporting monthly chart component  
+
+#### Docs
+- `docs/RELEASE_NOTES.md`, TODO / UPDATES / README refreshed for 1.3.0  
 
 ### 2026-07-31
 

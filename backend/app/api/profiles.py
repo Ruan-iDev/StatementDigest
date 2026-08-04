@@ -14,13 +14,24 @@ from app.attestation import ensure_profile_attestation
 from app.config import DATA_DIR, ensure_data_dirs
 from app.database import get_db
 from app.deps import get_active_profile_id, set_active_profile_id
-from app.models import BankProfile, Ledger, Transaction, UserProfile
+from app.models import (
+    BankProfile,
+    DisclaimerAcceptance,
+    ImportBatch,
+    Ledger,
+    Rule,
+    TrainingPattern,
+    TrainingReason,
+    Transaction,
+    UserProfile,
+)
 from app.schemas import (
     UserProfileCreate,
     UserProfileOut,
     UserProfileSwitch,
     UserProfileUpdate,
 )
+from app.security import hash_password, verify_password
 from app.seed import seed_ledgers_for_profile
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
@@ -81,6 +92,8 @@ def _out(p: UserProfile, db: Session, active_id: int) -> UserProfileOut:
         created_at=p.created_at,
         updated_at=p.updated_at,
         is_active=p.id == active_id,
+        has_password=bool(getattr(p, "password_hash", None)),
+        workspace_username=getattr(p, "workspace_username", None),
         ledger_count=db.query(Ledger).filter(Ledger.user_profile_id == p.id).count(),
         bank_profile_count=db.query(BankProfile)
         .filter(BankProfile.user_profile_id == p.id)
@@ -116,8 +129,20 @@ def switch_profile(
     payload: UserProfileSwitch,
     db: Session = Depends(get_db),
 ):
-    set_active_profile_id(db, payload.profile_id)
+    """Switch workspace. Extra client profiles require workspace username + password."""
     p = db.get(UserProfile, payload.profile_id)
+    if not p:
+        raise HTTPException(404, "Profile not found")
+    ph = getattr(p, "password_hash", None)
+    if ph:
+        expected_user = (getattr(p, "workspace_username", None) or "").strip()
+        given_user = (payload.workspace_username or "").strip()
+        if expected_user:
+            if not given_user or given_user.casefold() != expected_user.casefold():
+                raise HTTPException(403, "Incorrect workspace username or password.")
+        if not payload.password or not verify_password(payload.password, ph):
+            raise HTTPException(403, "Incorrect workspace username or password.")
+    set_active_profile_id(db, payload.profile_id)
     return _out(p, db, payload.profile_id)
 
 
@@ -127,9 +152,27 @@ def create_profile(
     db: Session = Depends(get_db),
     active_id: int = Depends(get_active_profile_id),
 ):
-    """Create a clean-slate profile; optionally copy ledgers and/or bank profiles."""
+    """Create a clean-slate profile; optionally copy ledgers and/or bank profiles.
+
+    First profile (registration) needs no workspace credentials — app login protects it.
+    Extra profiles on My Profile should send workspace_username + password together.
+    """
     name = (payload.name or "").strip() or "New Profile"
     ptype = _normalize_profile_type(payload.profile_type)
+    ws_user = (payload.workspace_username or "").strip() or None
+    pw_hash = None
+    if payload.password or ws_user:
+        if not ws_user:
+            raise HTTPException(400, "Workspace username is required for a locked profile")
+        if not payload.password:
+            raise HTTPException(400, "Workspace password is required for a locked profile")
+        if len(ws_user) < 2:
+            raise HTTPException(400, "Workspace username must be at least 2 characters")
+        try:
+            pw_hash = hash_password(payload.password)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
     profile = UserProfile(
         name=name,
         profile_type=ptype,
@@ -141,6 +184,8 @@ def create_profile(
         vat_number=payload.vat_number if ptype == "business" else None,
         email=payload.email,
         phone=payload.phone,
+        workspace_username=ws_user,
+        password_hash=pw_hash,
         country="South Africa",
         fy_start_month=3,
         currency="ZAR",
@@ -335,23 +380,42 @@ def delete_profile(
 
     _delete_logo_file(getattr(p, "logo_path", None))
 
-    db.query(Transaction).filter(Transaction.user_profile_id == profile_id).delete(
-        synchronize_session=False
-    )
-    from app.models import ImportBatch, Rule
+    try:
+        # Order matters: clear dependents before the user_profiles row (FK ON).
+        db.query(Transaction).filter(Transaction.user_profile_id == profile_id).delete(
+            synchronize_session=False
+        )
+        db.query(ImportBatch).filter(ImportBatch.user_profile_id == profile_id).delete(
+            synchronize_session=False
+        )
+        db.query(Rule).filter(Rule.user_profile_id == profile_id).delete(
+            synchronize_session=False
+        )
+        db.query(BankProfile).filter(BankProfile.user_profile_id == profile_id).delete(
+            synchronize_session=False
+        )
+        # Break ledger parent self-FK before bulk delete
+        db.query(Ledger).filter(Ledger.user_profile_id == profile_id).update(
+            {Ledger.parent_id: None}, synchronize_session=False
+        )
+        db.query(Ledger).filter(Ledger.user_profile_id == profile_id).delete(
+            synchronize_session=False
+        )
+        db.query(TrainingPattern).filter(
+            TrainingPattern.user_profile_id == profile_id
+        ).delete(synchronize_session=False)
+        db.query(TrainingReason).filter(TrainingReason.user_profile_id == profile_id).delete(
+            synchronize_session=False
+        )
+        db.query(DisclaimerAcceptance).filter(
+            DisclaimerAcceptance.user_profile_id == profile_id
+        ).delete(synchronize_session=False)
 
-    db.query(ImportBatch).filter(ImportBatch.user_profile_id == profile_id).delete(
-        synchronize_session=False
-    )
-    db.query(Rule).filter(Rule.user_profile_id == profile_id).delete(synchronize_session=False)
-    db.query(BankProfile).filter(BankProfile.user_profile_id == profile_id).delete(
-        synchronize_session=False
-    )
-    db.query(Ledger).filter(Ledger.user_profile_id == profile_id).delete(
-        synchronize_session=False
-    )
-    db.delete(p)
-    db.commit()
+        db.delete(p)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, f"Could not delete profile: {exc}") from exc
 
     if active_id == profile_id:
         other = db.query(UserProfile).order_by(UserProfile.id.asc()).first()

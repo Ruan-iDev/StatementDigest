@@ -14,9 +14,12 @@ export type DesktopBridge = {
   }>;
   windowMinimize?: () => Promise<void> | void;
   windowMaximizeToggle?: () => Promise<boolean> | boolean;
-  windowClose?: () => Promise<void> | void;
+  windowClose?: () => Promise<{ ok: boolean; blocked?: boolean; message?: string } | void> | void;
   windowIsMaximized?: () => Promise<boolean> | boolean;
   onMaximizedChanged?: (callback: (maximized: boolean) => void) => () => void;
+  /** When false, window close is blocked until the user logs out (data lock). */
+  setCloseAllowed?: (allowed: boolean) => Promise<void> | void;
+  isCloseAllowed?: () => Promise<boolean> | boolean;
 };
 
 declare global {

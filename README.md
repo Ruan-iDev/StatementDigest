@@ -20,11 +20,15 @@ When a chat or session drops, **continue from these files** — they are the sou
 | [docs/FILE_TREE.md](docs/FILE_TREE.md) | What each file/folder does |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Agreed decisions log |
 
-### Next phase (2026-07-31)
+### Current release
+
+**v1.3.0** portable Windows EXE — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) for shipped features and roadmap.
+
+### Next phase (after v1.3.0)
 
 1. **Capture Discovery Personal** multi-statement data  
 2. **Calibrate Reporting** against that data  
-3. Later: bulk Capitec + Nedbank accuracy passes  
+3. Later: bulk Capitec + Nedbank accuracy; OTA channel; code signing  
 
 ### Parser islands (edition-1 locked)
 

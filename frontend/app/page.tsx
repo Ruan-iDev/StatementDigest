@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Upload, ListTodo, FileBarChart, Settings } from "lucide-react";
 import { api, type DashboardStats } from "@/lib/api";
 import { HubTile } from "@/components/hub-tile";
+import { MonthlyComparisonChart } from "@/components/monthly-comparison-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function DashboardPage() {
@@ -62,6 +63,7 @@ export default function DashboardPage() {
           icon={ListTodo}
           accent="magenta"
           badge={loading ? "…" : pending > 0 ? pending : "0"}
+          pulse={!loading && pending > 0}
         />
         <HubTile
           href="/reports"
@@ -78,6 +80,9 @@ export default function DashboardPage() {
           accent="violet"
         />
       </div>
+
+      {/* Same MonthlyComparisonChart as Reporting — one shared component, not a fork */}
+      <MonthlyComparisonChart />
 
       {stats && !error && (
         <p className="text-center text-xs text-muted-foreground">

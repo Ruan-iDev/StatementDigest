@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Brain, Camera, ChevronDown, HelpCircle, ListPlus, Paperclip } from "lucide-react";
+import { Camera, ChevronDown, HelpCircle, ListPlus, Paperclip } from "lucide-react";
 import { api, getStoredProfileId, type Ledger, type TrainingReason, type Transaction } from "@/lib/api";
 import { useProfile } from "@/components/profile-provider";
 import { formatDate, formatMoney } from "@/lib/utils";
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { CreateLedgerModal } from "@/components/create-ledger-modal";
 import { LedgerAssignPicker } from "@/components/ledger-assign-picker";
+import { useLicenseOptional } from "@/components/license-provider";
 
 type TxTab = "unallocated" | "allocated";
 
@@ -114,6 +115,8 @@ function clearCollapseMemory(
 export default function PendingPage() {
   const { active } = useProfile();
   const profileId = active?.id ?? getStoredProfileId();
+  const license = useLicenseOptional();
+  const readOnly = Boolean(license?.readOnly);
 
   const [tab, setTab] = useState<TxTab>("unallocated");
   const [txs, setTxs] = useState<Transaction[]>([]);
@@ -592,22 +595,7 @@ export default function PendingPage() {
     return n;
   }, [selected, rowLedger, bulkLedger]);
 
-  function openRuleFromSelection() {
-    const ids = selected.size ? Array.from(selected) : [];
-    if (!ids.length) {
-      setError("Select at least one transaction to create a rule");
-      return;
-    }
-    const first = txs.find((t) => t.id === ids[0]);
-    setRuleTxIds(ids);
-    setRuleName(first ? `Match: ${first.description.slice(0, 40)}` : "New rule");
-    setRuleValue(first?.description || "");
-    setRuleMatch("contains");
-    setRuleLedger(rowLedger[ids[0]] || bulkLedger || "");
-    setRuleOpen(true);
-  }
-
-  /** Inline row action — rule targets this transaction only. */
+  /** Inline row action — rule targets this transaction only (auto-applies on save). */
   function openRuleFromTransaction(tx: Transaction) {
     setError(null);
     setRuleTxIds([tx.id]);
@@ -642,16 +630,6 @@ export default function PendingPage() {
     }
   }
 
-  async function reapplyRules() {
-    try {
-      const res = await api.transactions.applyRules();
-      setMessage(res.message);
-      await load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Apply failed");
-    }
-  }
-
   return (
     <div className="space-y-0">
       {/* Sticky top panes — stay visible while the transaction list scrolls */}
@@ -662,24 +640,15 @@ export default function PendingPage() {
               Queue
             </p>
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Transactions</h1>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {tab === "unallocated" && (
-              <>
-                <Button variant="secondary" size="sm" onClick={reapplyRules}>
-                  Re-run rules
-                </Button>
-                <Button variant="outline" size="sm" onClick={openRuleFromSelection}>
-                  Create rule from selection
-                </Button>
-              </>
-            )}
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Use the rule button on a line to create a rule — it applies automatically.
+            </p>
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — always 50/50 (only two options) */}
         <div
-          className="flex flex-wrap gap-1 rounded-xl border border-border/70 bg-card/60 p-1"
+          className="grid w-full grid-cols-2 gap-1 rounded-xl border border-border/70 bg-card/60 p-1"
           role="tablist"
           aria-label="Transaction lists"
         >
@@ -688,7 +657,7 @@ export default function PendingPage() {
             role="tab"
             aria-selected={tab === "unallocated"}
             className={cn(
-              "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none",
+              "flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
               tab === "unallocated"
                 ? "border border-[hsl(var(--neon-magenta)/0.55)] bg-[hsl(var(--neon-magenta)/0.12)] text-foreground"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
@@ -705,7 +674,7 @@ export default function PendingPage() {
             role="tab"
             aria-selected={tab === "allocated"}
             className={cn(
-              "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:flex-none",
+              "flex w-full items-center justify-center rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
               tab === "allocated"
                 ? "border border-[hsl(var(--neon-lime)/0.55)] bg-[hsl(var(--neon-lime)/0.12)] text-foreground"
                 : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
@@ -780,9 +749,13 @@ export default function PendingPage() {
               <Button
                 size="sm"
                 className="h-8"
-                disabled={selectedReadyCount === 0}
+                disabled={readOnly || selectedReadyCount === 0}
                 onClick={() => void allocateSelected()}
-                title="Uses each row’s ledger; falls back to bulk ledger when a row has none"
+                title={
+                  readOnly
+                    ? "Read-only — enter unlock key to allocate"
+                    : "Uses each row’s ledger; falls back to bulk ledger when a row has none"
+                }
               >
                 {tab === "unallocated" ? "Allocate selected" : "Update selected"}
                 {selectedReadyCount > 0 ? ` (${selectedReadyCount})` : ""}
@@ -792,6 +765,7 @@ export default function PendingPage() {
                   size="sm"
                   className="h-8"
                   variant="secondary"
+                  disabled={readOnly}
                   onClick={() => void bulkAssign()}
                   title="Force the bulk ledger onto every checked row"
                 >
@@ -803,7 +777,7 @@ export default function PendingPage() {
                   size="sm"
                   className="h-8"
                   variant="outline"
-                  disabled={selected.size === 0}
+                  disabled={readOnly || selected.size === 0}
                   onClick={bulkUnallocate}
                 >
                   Unallocate selected
@@ -1031,73 +1005,87 @@ export default function PendingPage() {
                             </div>
                           </div>
 
-                          {/* Row 2 — assign / allocate / paperclip (right-aligned) */}
-                          <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2 pl-6 sm:pl-7">
+                          {/* Row 2 — ledger picker left · allocate / rule / notes right */}
+                          <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-6 sm:flex-nowrap sm:pl-7">
                             <LedgerAssignPicker
-                              className="w-full min-w-0 max-w-[16rem] sm:w-auto sm:min-w-[13rem]"
+                              className="min-w-0 flex-1 sm:max-w-none"
                               ledgers={ledgers}
                               value={selectValue}
                               onChange={(v) => selectRowLedger(tx.id, v)}
                               onAddNew={() => openCreateLedger({ kind: "row", txId: tx.id })}
                               placeholder={
-                                tab === "allocated" ? "Change ledger…" : "Assign…"
+                                tab === "allocated"
+                                  ? "Change ledger…"
+                                  : "Assign to Ledger…"
                               }
                               aria-label={
                                 tab === "allocated"
                                   ? `Change ledger for transaction ${tx.id}`
-                                  : `Assign ledger for transaction ${tx.id}`
+                                  : `Assign to ledger for transaction ${tx.id}`
                               }
                             />
-                            <Button
-                              size="sm"
-                              className="h-9 shrink-0"
-                              disabled={!(rowLedger[tx.id] || selectValue)}
-                              onClick={() =>
-                                categoriseOne(tx.id, rowLedger[tx.id] || selectValue)
-                              }
-                              title="Allocate this row now (or tick several and use Allocate selected)"
-                            >
-                              {tab === "allocated" ? "Update" : "Allocate"}
-                            </Button>
-                            {tab === "allocated" && (
+                            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 sm:ml-auto">
                               <Button
                                 size="sm"
-                                variant="outline"
                                 className="h-9 shrink-0"
-                                onClick={() => unallocateOne(tx.id)}
+                                disabled={readOnly || !(rowLedger[tx.id] || selectValue)}
+                                onClick={() =>
+                                  categoriseOne(tx.id, rowLedger[tx.id] || selectValue)
+                                }
+                                title={
+                                  readOnly
+                                    ? "Read-only — enter unlock key to allocate"
+                                    : "Allocate this row now (or tick several and use Allocate selected)"
+                                }
                               >
-                                Unallocate
+                                {tab === "allocated" ? "Update" : "Allocate"}
                               </Button>
-                            )}
-                            {tab === "unallocated" && (
+                              {tab === "allocated" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 shrink-0"
+                                  disabled={readOnly}
+                                  onClick={() => unallocateOne(tx.id)}
+                                >
+                                  Unallocate
+                                </Button>
+                              )}
+                              {tab === "unallocated" && (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-9 w-9 shrink-0 border-[hsl(var(--neon-violet)/0.45)] text-[hsl(var(--neon-violet))] hover:bg-[hsl(var(--neon-violet)/0.1)]"
+                                  title={
+                                    readOnly
+                                      ? "Read-only — rules locked"
+                                      : "Create rule for this transaction only"
+                                  }
+                                  aria-label="Create rule for this transaction"
+                                  disabled={readOnly}
+                                  onClick={() => openRuleFromTransaction(tx)}
+                                >
+                                  <ListPlus className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 type="button"
                                 size="icon"
-                                variant="outline"
-                                className="h-9 w-9 shrink-0 border-[hsl(var(--neon-violet)/0.45)] text-[hsl(var(--neon-violet))] hover:bg-[hsl(var(--neon-violet)/0.1)]"
-                                title="Create rule for this transaction only"
-                                aria-label="Create rule for this transaction"
-                                onClick={() => openRuleFromTransaction(tx)}
+                                variant={notesOpen ? "secondary" : "outline"}
+                                className={cn(
+                                  "h-9 w-9 shrink-0",
+                                  (notesOpen || hasNotes) &&
+                                    "border-[hsl(var(--neon-cyan)/0.55)] text-[hsl(var(--neon-cyan))]"
+                                )}
+                                title={notesOpen ? "Collapse notes" : "Notes & receipt"}
+                                aria-expanded={notesOpen}
+                                aria-label={notesOpen ? "Collapse notes" : "Open notes"}
+                                onClick={() => toggleNotesExpand(tx.id, tx.notes)}
                               >
-                                <ListPlus className="h-4 w-4" />
+                                <Paperclip className="h-4 w-4" />
                               </Button>
-                            )}
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant={notesOpen ? "secondary" : "outline"}
-                              className={cn(
-                                "h-9 w-9 shrink-0",
-                                (notesOpen || hasNotes) &&
-                                  "border-[hsl(var(--neon-cyan)/0.55)] text-[hsl(var(--neon-cyan))]"
-                              )}
-                              title={notesOpen ? "Collapse notes" : "Notes & receipt"}
-                              aria-expanded={notesOpen}
-                              aria-label={notesOpen ? "Collapse notes" : "Open notes"}
-                              onClick={() => toggleNotesExpand(tx.id, tx.notes)}
-                            >
-                              <Paperclip className="h-4 w-4" />
-                            </Button>
+                            </div>
                           </div>
 
                           {notesOpen && (
@@ -1157,30 +1145,9 @@ export default function PendingPage() {
                           )}
                         </div>
 
-                        {/* DEV train control — outside the card, right edge */}
-                        <div className="flex w-10 shrink-0 flex-col items-center gap-1 pt-1 sm:w-12">
-                          <button
-                            type="button"
-                            title="DEV: train parser — flag ghosts & mistakes"
-                            aria-label="Train parser on this transaction"
-                            aria-pressed={trainOpenId === tx.id}
-                            onClick={() => openTrainPanel(tx.id)}
-                            className={cn(
-                              "flex h-9 w-9 items-center justify-center rounded-lg border-2 transition-all",
-                              trainOpenId === tx.id
-                                ? "border-[hsl(var(--neon-violet))] bg-[hsl(var(--neon-violet)/0.2)] text-[hsl(var(--neon-violet))] shadow-[0_0_12px_hsl(var(--neon-violet)/0.35)]"
-                                : "border-dashed border-border text-muted-foreground hover:border-[hsl(var(--neon-violet)/0.5)] hover:text-[hsl(var(--neon-violet))]"
-                            )}
-                          >
-                            <Brain className="h-4 w-4" />
-                          </button>
-                          <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Dev
-                          </span>
-                        </div>
-
-                        {/* Train panel (full width under both columns) */}
-                        {trainOpenId === tx.id && (
+                        {/* DEV train control hidden for now — calibration is ours, not the user's.
+                            Panel kept for a future power-user toggle. */}
+                        {false && trainOpenId === tx.id && (
                           <div className="basis-full pl-0 sm:col-span-full">
                             <div className="mt-1 rounded-xl border-2 border-[hsl(var(--neon-violet)/0.45)] bg-[hsl(var(--neon-violet)/0.08)] p-3 sm:ml-0">
                               <p className="mb-2 text-xs font-semibold text-[hsl(var(--neon-violet))]">

@@ -26,6 +26,7 @@ import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 import { ChangePasswordCard } from "@/components/change-password-card";
 import { useAuth } from "@/components/auth-provider";
+import { TrialBadge } from "@/components/trial-gate";
 
 function formatBytes(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n) || n < 0) return "—";
@@ -36,8 +37,15 @@ function formatBytes(n: number | null | undefined): string {
 
 export default function MyProfilePage() {
   const router = useRouter();
-  const { isGuest } = useAuth();
-  const { profiles, active, refresh, switchProfile, loading: ctxLoading } = useProfile();
+  const { isGuest, username: signedInUsername } = useAuth();
+  const {
+    profiles,
+    active,
+    refresh,
+    switchProfile,
+    requestSwitchProfile,
+    loading: ctxLoading,
+  } = useProfile();
   const [form, setForm] = useState<Partial<UserProfile>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +70,9 @@ export default function MyProfilePage() {
   const [copyBanksFrom, setCopyBanksFrom] = useState<number | null>(null);
   const [seedDefaults, setSeedDefaults] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [newWorkspaceUser, setNewWorkspaceUser] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newPassword2, setNewPassword2] = useState("");
 
   function openCreateProfile() {
     setNewName("");
@@ -73,6 +84,9 @@ export default function MyProfilePage() {
     setCopyLedgersFrom(null);
     setCopyBanksFrom(null);
     setSeedDefaults(true);
+    setNewWorkspaceUser("");
+    setNewPassword("");
+    setNewPassword2("");
     setError(null);
     setCreateOpen(true);
   }
@@ -251,6 +265,18 @@ export default function MyProfilePage() {
       setError("Business profiles need a name");
       return;
     }
+    if (newWorkspaceUser.trim().length < 2) {
+      setError("Set a workspace username (at least 2 characters) for this client profile.");
+      return;
+    }
+    if (!newPassword.trim()) {
+      setError("Set a workspace password — required when switching into this client’s books.");
+      return;
+    }
+    if (newPassword !== newPassword2) {
+      setError("Workspace password and confirmation do not match.");
+      return;
+    }
     setCreating(true);
     setError(null);
     try {
@@ -261,6 +287,8 @@ export default function MyProfilePage() {
         business_registration_number:
           newType === "business" ? newRegNumber.trim() || null : null,
         vat_number: newType === "business" ? newVatNumber.trim() || null : null,
+        workspace_username: newWorkspaceUser.trim(),
+        password: newPassword,
         copy_ledgers_from_id: copyLedgersFrom,
         copy_bank_profiles_from_id: copyBanksFrom,
         seed_default_ledgers: !copyLedgersFrom && seedDefaults,
@@ -276,6 +304,8 @@ export default function MyProfilePage() {
           );
         }
       }
+      const unlockUser = newWorkspaceUser.trim();
+      const unlockPw = newPassword;
       setMessage(`Created “${created.name}” — switching now`);
       setCreateOpen(false);
       setNewName("");
@@ -284,8 +314,15 @@ export default function MyProfilePage() {
       setNewVatNumber("");
       setNewLogoFile(null);
       setNewType("individual");
+      setNewWorkspaceUser("");
+      setNewPassword("");
+      setNewPassword2("");
       setCreating(false);
-      await switchProfile(created.id);
+      // Just created with these credentials — switch without re-prompt
+      await switchProfile(created.id, {
+        workspace_username: unlockUser,
+        password: unlockPw,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Create failed");
       setCreating(false);
@@ -301,15 +338,20 @@ export default function MyProfilePage() {
       `Delete profile “${p.name}” and ALL of its data (transactions, bank profiles, ledgers, rules)?\n\nThis cannot be undone.`
     );
     if (!ok) return;
+    setError(null);
+    setMessage(null);
     try {
       await api.profiles.delete(p.id);
       await refresh();
       setMessage(`Deleted “${p.name}”`);
+      // Active workspace was removed — reload so every screen picks the new active id
       if (p.is_active) {
         window.location.reload();
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Delete failed");
+      // Ensure list matches server if a partial failure left UI stale
+      await refresh().catch(() => undefined);
     }
   }
 
@@ -322,11 +364,14 @@ export default function MyProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <header className="space-y-1">
+      <header className="relative space-y-1">
+        <div className="absolute right-0 top-0">
+          <TrialBadge />
+        </div>
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-[hsl(var(--neon-violet))]">
           Settings
         </p>
-        <h1 className="page-title">My Profile</h1>
+        <h1 className="page-title pr-28 sm:pr-36">My Profile</h1>
         <p className="page-subtitle max-w-xl">
           Each profile is a separate workspace. Choose <strong>Individual</strong> or{" "}
           <strong>Business</strong>. Business profiles can add a logo used as letterhead on printed
@@ -455,6 +500,15 @@ export default function MyProfilePage() {
             </CardTitle>
             <CardDescription>
               Switch workspace — only the active profile’s data is shown
+              {signedInUsername ? (
+                <>
+                  {" "}
+                  · signed in as{" "}
+                  <span className="font-medium text-foreground">{signedInUsername}</span>
+                </>
+              ) : isGuest ? (
+                <> · guest session</>
+              ) : null}
             </CardDescription>
           </div>
           <Button
@@ -468,49 +522,94 @@ export default function MyProfilePage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
-          {profiles.map((p) => (
-            <div
-              key={p.id}
-              className={cn(
-                "flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5",
-                p.is_active
-                  ? "border-[hsl(var(--neon-violet)/0.55)] bg-[hsl(var(--neon-violet)/0.1)]"
-                  : "border-border/70 bg-card/60"
-              )}
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{p.name}</span>
-                  {p.is_active && <Badge variant="secondary">Active</Badge>}
-                  <Badge variant="outline">
-                    {(p.profile_type || "individual") === "business" ? "Business" : "Individual"}
-                  </Badge>
-                  {p.has_logo && <Badge variant="secondary">Logo</Badge>}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {p.transaction_count} txns · {p.ledger_count} ledgers · {p.bank_profile_count} bank
-                  profiles
-                  {p.business_name ? ` · ${p.business_name}` : p.full_name ? ` · ${p.full_name}` : ""}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {!p.is_active && (
-                  <Button size="sm" variant="secondary" onClick={() => switchProfile(p.id)}>
-                    <Check className="mr-1 h-3.5 w-3.5" />
-                    Switch
-                  </Button>
+          {profiles.map((p) => {
+            const isBiz = (p.profile_type || "individual") === "business";
+            const personLabel = isBiz
+              ? (p.business_name && p.business_name.trim()) ||
+                (p.full_name && p.full_name.trim()) ||
+                null
+              : (p.full_name && p.full_name.trim()) ||
+                (p.business_name && p.business_name.trim()) ||
+                null;
+            return (
+              <div
+                key={p.id}
+                className={cn(
+                  "flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2.5",
+                  p.is_active
+                    ? "border-[hsl(var(--neon-violet)/0.55)] bg-[hsl(var(--neon-violet)/0.1)]"
+                    : "border-border/70 bg-card/60"
                 )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={profiles.length <= 1}
-                  onClick={() => removeProfile(p)}
-                >
-                  Delete
-                </Button>
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{p.name}</span>
+                    {p.is_active && <Badge variant="secondary">Active</Badge>}
+                    <Badge variant="outline">
+                      {(p.profile_type || "individual") === "business"
+                        ? "Business"
+                        : "Individual"}
+                    </Badge>
+                    {p.has_logo && <Badge variant="secondary">Logo</Badge>}
+                    {p.has_password && (
+                      <Badge
+                        variant="outline"
+                        className="border-[hsl(var(--neon-violet)/0.45)] text-[hsl(var(--neon-violet))]"
+                      >
+                        Locked
+                        {p.workspace_username ? ` · ${p.workspace_username}` : ""}
+                      </Badge>
+                    )}
+                  </div>
+                  {/* Person / business label so multi-profile installs stay distinguishable */}
+                  <p className="mt-0.5 text-xs font-medium text-foreground/80">
+                    {personLabel ? (
+                      <>
+                        <span className="text-muted-foreground font-normal">
+                          {isBiz ? "Business · " : "Username · "}
+                        </span>
+                        {personLabel}
+                      </>
+                    ) : (
+                      <span className="font-normal text-muted-foreground">
+                        No person name set — edit profile details below
+                      </span>
+                    )}
+                    {p.email?.trim() ? (
+                      <span className="font-normal text-muted-foreground">
+                        {" "}
+                        · {p.email.trim()}
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {p.transaction_count} txns · {p.ledger_count} ledgers ·{" "}
+                    {p.bank_profile_count} bank profiles
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {!p.is_active && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => requestSwitchProfile(p.id)}
+                    >
+                      <Check className="mr-1 h-3.5 w-3.5" />
+                      Switch
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={profiles.length <= 1}
+                    onClick={() => removeProfile(p)}
+                  >
+                    Delete
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -956,6 +1055,51 @@ export default function MyProfilePage() {
             ))}
           </div>
 
+          <div className="space-y-2 rounded-xl border-2 border-[hsl(var(--neon-violet)/0.4)] bg-[hsl(var(--neon-violet)/0.06)] p-3">
+            <p className="text-sm font-medium">Workspace username &amp; password (required)</p>
+            <p className="text-xs text-muted-foreground">
+              Your main profile is already protected by app login. Extra client books need their own
+              credentials — switching into them opens a full-app unlock gate (username + password or
+              Cancel).
+            </p>
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="new-ws-user">Workspace username</Label>
+                <Input
+                  id="new-ws-user"
+                  autoComplete="username"
+                  value={newWorkspaceUser}
+                  onChange={(e) => setNewWorkspaceUser(e.target.value)}
+                  placeholder="e.g. client login name"
+                />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="new-prof-pw">Workspace password</Label>
+                  <Input
+                    id="new-prof-pw"
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="new-prof-pw2">Confirm password</Label>
+                  <Input
+                    id="new-prof-pw2"
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword2}
+                    onChange={(e) => setNewPassword2(e.target.value)}
+                    className="font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-wrap justify-end gap-2 border-t border-border/50 pt-3">
             <Button type="button" variant="ghost" onClick={closeCreateProfile} disabled={creating}>
               Cancel
@@ -967,6 +1111,7 @@ export default function MyProfilePage() {
         </div>
       </Modal>
 
+      {/* App login password only — not workspace credentials */}
       {!isGuest && <ChangePasswordCard />}
 
       <Button variant="outline" onClick={() => router.push("/settings")}>

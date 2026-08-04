@@ -197,6 +197,16 @@ export type BankProfile = {
   updated_at: string;
 };
 
+/** Entry from GET /bank-profiles/supported-banks (calibrated banks only). */
+export type SupportedBank = {
+  id: string;
+  bank_type: string;
+  label: string;
+  description: string;
+  suggested_name: string;
+  formats?: string;
+};
+
 export type Transaction = {
   id: number;
   bank_profile_id: number;
@@ -458,6 +468,9 @@ export type UserProfile = {
   created_at: string;
   updated_at: string;
   is_active: boolean;
+  /** Extra client workspace — username+password required on switch when true */
+  has_password?: boolean;
+  workspace_username?: string | null;
   ledger_count: number;
   bank_profile_count: number;
   transaction_count: number;
@@ -491,10 +504,31 @@ export type DissectResult = {
   message: string;
 };
 
+export type LicenseStatus = {
+  trial_days: number;
+  trial_started_at?: string | null;
+  days_remaining: number;
+  expired: boolean;
+  licensed: boolean;
+  license_kind?: string | null;
+  message: string;
+  can_use_app: boolean;
+  /** True when trial ended — view data only, no edits/exports */
+  read_only: boolean;
+};
+
 // ── Endpoints ────────────────────────────────────────────────────────────
 
 export const api = {
   health: () => request<{ status: string }>("/health"),
+  license: {
+    status: () => request<LicenseStatus>("/license/status"),
+    activate: (key: string) =>
+      request<LicenseStatus>("/license/activate", {
+        method: "POST",
+        body: JSON.stringify({ key }),
+      }),
+  },
   auth: {
     status: () =>
       request<{
@@ -592,6 +626,9 @@ export const api = {
       vat_number?: string | null;
       email?: string | null;
       phone?: string | null;
+      /** Extra client profiles only — with password */
+      workspace_username?: string | null;
+      password?: string | null;
       copy_ledgers_from_id?: number | null;
       copy_bank_profiles_from_id?: number | null;
       seed_default_ledgers?: boolean;
@@ -602,10 +639,21 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
-    switch: (profile_id: number) =>
+    switch: (
+      profile_id: number,
+      opts?: { password?: string; workspace_username?: string }
+    ) =>
       request<UserProfile>("/profiles/switch", {
         method: "POST",
-        body: JSON.stringify({ profile_id }),
+        body: JSON.stringify({
+          profile_id,
+          ...(opts?.workspace_username
+            ? { workspace_username: opts.workspace_username }
+            : {}),
+          ...(opts?.password != null && opts.password !== ""
+            ? { password: opts.password }
+            : {}),
+        }),
       }),
     delete: (id: number) => request<void>(`/profiles/${id}`, { method: "DELETE" }),
     uploadLogo: (id: number, file: File) => {
@@ -653,6 +701,9 @@ export const api = {
   bankProfiles: {
     list: () => request<BankProfile[]>("/bank-profiles"),
     get: (id: number) => request<BankProfile>(`/bank-profiles/${id}`),
+    /** Banks we have calibrated — for the guided picker only. */
+    supportedBanks: () =>
+      request<{ banks: SupportedBank[] }>("/bank-profiles/supported-banks"),
     create: (body: { name: string; bank_type: string; calibration_data?: Record<string, unknown> }) =>
       request<BankProfile>("/bank-profiles", { method: "POST", body: JSON.stringify(body) }),
     update: (id: number, body: Partial<BankProfile>) =>

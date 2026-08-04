@@ -2,6 +2,7 @@
 
 import { UserRound } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
+import { TrialBadge } from "@/components/trial-gate";
 
 /** Sticky notice when browsing without an account — nothing is saved. */
 export function GuestBanner() {
@@ -18,13 +19,16 @@ export function GuestBanner() {
             to upload statements and keep your ledgers.
           </span>
         </p>
-        <button
-          type="button"
-          className="shrink-0 text-xs font-semibold underline underline-offset-2"
-          onClick={() => void logout()}
-        >
-          Exit guest &amp; sign in
-        </button>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <TrialBadge />
+          <button
+            type="button"
+            className="text-xs font-semibold underline underline-offset-2"
+            onClick={() => void logout()}
+          >
+            Exit guest &amp; sign in
+          </button>
+        </div>
       </div>
     </div>
   );

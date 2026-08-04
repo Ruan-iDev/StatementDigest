@@ -10,7 +10,7 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const https = require("https");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const { URL } = require("url");
 
 const API_HOST = "127.0.0.1";
@@ -24,6 +24,9 @@ let mainWindow = null;
 let apiProcess = null;
 let uiServer = null;
 let shuttingDown = false;
+let quitStarted = false;
+/** When false, close is blocked until the user logs out (data lock for registered sessions). */
+let closeAllowed = true;
 
 function isDev() {
   return !app.isPackaged;
@@ -105,6 +108,41 @@ function resolveUiFile(urlPath) {
   return null;
 }
 
+/**
+ * Proxy /api/* from the UI origin (127.0.0.1:3000) to the FastAPI sidecar (:8000).
+ * Same-origin fetch from the renderer avoids cross-port "Failed to fetch" flakiness.
+ */
+function proxyApiRequest(req, res) {
+  const headers = { ...req.headers, host: `${API_HOST}:${API_PORT}` };
+
+  const proxyReq = http.request(
+    {
+      hostname: API_HOST,
+      port: API_PORT,
+      path: req.url || "/api/",
+      method: req.method,
+      headers,
+    },
+    (proxyRes) => {
+      res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+      proxyRes.pipe(res);
+    }
+  );
+
+  proxyReq.on("error", (err) => {
+    if (!res.headersSent) {
+      res.writeHead(502, { "Content-Type": "application/json; charset=utf-8" });
+    }
+    res.end(
+      JSON.stringify({
+        detail: `Local API unavailable (${err.message}). Is ledgerflow-api running?`,
+      })
+    );
+  });
+
+  req.pipe(proxyReq);
+}
+
 function startUiServer() {
   const root = uiStaticRoot();
   if (!fs.existsSync(root)) {
@@ -114,7 +152,13 @@ function startUiServer() {
   return new Promise((resolve, reject) => {
     uiServer = http.createServer((req, res) => {
       try {
-        const filePath = resolveUiFile(req.url || "/");
+        const urlPath = req.url || "/";
+        if (urlPath === "/api" || urlPath.startsWith("/api/")) {
+          proxyApiRequest(req, res);
+          return;
+        }
+
+        const filePath = resolveUiFile(urlPath);
         if (!filePath) {
           res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
           res.end("Not found");
@@ -134,6 +178,84 @@ function startUiServer() {
   });
 }
 
+function apiLogPath() {
+  try {
+    return path.join(app.getPath("userData"), "ledgerflow-api.log");
+  } catch {
+    return path.join(__dirname, "ledgerflow-api.log");
+  }
+}
+
+/** Synchronous full process-tree kill (Windows needs /T so sidecar children die). */
+function killProcessTreeSync(pid) {
+  if (!pid || pid === process.pid) return;
+  try {
+    if (process.platform === "win32") {
+      execSync(`taskkill /pid ${pid} /T /F`, {
+        windowsHide: true,
+        stdio: "ignore",
+        timeout: 10000,
+      });
+    } else {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        process.kill(pid, "SIGKILL");
+      }
+    }
+  } catch {
+    /* already gone */
+  }
+}
+
+/** Kill any leftover ledgerflow-api.exe (orphans after crash / incomplete close). */
+function killApiByImageNameSync() {
+  if (process.platform !== "win32") return;
+  try {
+    execSync("taskkill /IM ledgerflow-api.exe /T /F", {
+      windowsHide: true,
+      stdio: "ignore",
+      timeout: 10000,
+    });
+  } catch {
+    /* none running */
+  }
+}
+
+function pidsListeningOnPortSync(port) {
+  if (process.platform !== "win32") return [];
+  try {
+    const out = execSync(
+      `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique"`,
+      { encoding: "utf8", windowsHide: true, timeout: 8000 }
+    );
+    return String(out || "")
+      .split(/\r?\n/)
+      .map((l) => parseInt(l.trim(), 10))
+      .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Kill whatever is holding the API port (orphaned ledgerflow-api from a previous
+ * incomplete exit). Synchronous kill + wait until health fails.
+ */
+async function freeApiPort() {
+  for (const pid of pidsListeningOnPortSync(API_PORT)) {
+    killProcessTreeSync(pid);
+  }
+  // Named sidecar in case it is not bound yet / mid-exit
+  killApiByImageNameSync();
+
+  // Wait until nothing answers health (up to ~5s)
+  for (let i = 0; i < 20; i++) {
+    if (!(await fetchHealth(400))) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
 function startApi() {
   const exePath = apiExecutablePath();
   if (!exePath) {
@@ -151,20 +273,70 @@ function startApi() {
     // Desktop always uses the user's Documents data folder unless overridden
   };
 
+  const logFile = apiLogPath();
+  let logStream = null;
+  try {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    logStream = fs.createWriteStream(logFile, { flags: "a" });
+    logStream.write(
+      `\n---- API start ${new Date().toISOString()} exe=${exePath} ----\n`
+    );
+  } catch {
+    logStream = null;
+  }
+
   apiProcess = spawn(exePath, [], {
     env,
     cwd: path.dirname(exePath),
     windowsHide: true,
-    stdio: isDev() ? "inherit" : "ignore",
+    stdio: isDev() ? "inherit" : logStream ? ["ignore", "pipe", "pipe"] : "ignore",
+  });
+
+  if (logStream && apiProcess.stdout) {
+    apiProcess.stdout.on("data", (chunk) => {
+      try {
+        logStream.write(chunk);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+  if (logStream && apiProcess.stderr) {
+    apiProcess.stderr.on("data", (chunk) => {
+      try {
+        logStream.write(chunk);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
+  apiProcess.on("error", (err) => {
+    try {
+      if (logStream) logStream.write(`spawn error: ${err}\n`);
+    } catch {
+      /* ignore */
+    }
   });
 
   apiProcess.on("exit", (code, signal) => {
     apiProcess = null;
+    try {
+      if (logStream) {
+        logStream.write(
+          `---- API exit code=${code ?? "?"} signal=${signal ?? "none"} ----\n`
+        );
+        logStream.end();
+      }
+    } catch {
+      /* ignore */
+    }
     if (!shuttingDown && mainWindow) {
       dialog.showErrorBox(
         "LedgerFlow API stopped",
         `The local API exited (code ${code ?? "?"} signal ${signal ?? "none"}). ` +
-          "Close the app and try again. If this keeps happening, contact the developer."
+          "Close the app fully (check Task Manager for leftover LedgerFlow processes) and try again.\n\n" +
+          `Log: ${logFile}`
       );
     }
   });
@@ -192,6 +364,10 @@ async function waitForApi(attempts = 60, delayMs = 500) {
   return false;
 }
 
+function splashHtmlPath() {
+  return path.join(__dirname, "splash.html");
+}
+
 function createWindow() {
   // Frameless chrome: no File/Edit menu bar, no OS title bar / caption buttons.
   // The React UI supplies its own drag region + min/max/close controls.
@@ -204,7 +380,7 @@ function createWindow() {
     show: false,
     frame: false,
     autoHideMenuBar: true,
-    backgroundColor: "#181b22",
+    backgroundColor: "#000000",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -226,6 +402,23 @@ function createWindow() {
     mainWindow = null;
   });
 
+  // Data lock: registered sessions must log out before the window may close
+  mainWindow.on("close", (e) => {
+    if (shuttingDown || closeAllowed) return;
+    e.preventDefault();
+    dialog.showMessageBox(mainWindow, {
+      type: "info",
+      title: "Log out to close",
+      message: "Please log out before closing LedgerFlow.",
+      detail:
+        "Your session stays locked so local data is not left open by accident. " +
+        "Use Log out in the sidebar, then close the app.",
+      buttons: ["OK"],
+      defaultId: 0,
+      noLink: true,
+    });
+  });
+
   // Keep renderer window-control icons in sync when user double-clicks title drag region
   const notifyMaxState = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -235,49 +428,92 @@ function createWindow() {
   mainWindow.on("maximize", notifyMaxState);
   mainWindow.on("unmaximize", notifyMaxState);
 
-  return mainWindow.loadURL(UI_URL);
+  // Black splash immediately (logo + quotes) while API boots
+  return mainWindow.loadFile(splashHtmlPath());
 }
 
+async function showMainUi() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  await mainWindow.loadURL(UI_URL);
+}
+
+/** Native splash minimum so a quote of the day is readable even if the API boots fast. */
+const SPLASH_MIN_MS = 6000;
+
 async function boot() {
+  const bootStartedAt = Date.now();
   try {
+    // Show splash as early as possible so the wait never feels empty
+    await createWindow();
+
+    // 1) Clear orphans and wait until port 8000 is truly free
+    await freeApiPort();
+    // 2) Start API + UI (UI proxies /api → :8000 for same-origin requests)
     startApi();
     await startUiServer();
 
-    const ok = await waitForApi();
-    if (!ok) {
+    const ok = await waitForApi(90, 500);
+    if (!ok || (apiProcess && apiProcess.exitCode != null)) {
       dialog.showErrorBox(
         "LedgerFlow failed to start",
         "The local API did not become healthy on http://127.0.0.1:8000.\n\n" +
-          "Close any other LedgerFlow / API windows using port 8000 and try again."
+          "1) Close every LedgerFlow window\n" +
+          "2) In Task Manager, end leftover LedgerFlow / ledgerflow-api processes\n" +
+          "3) Open the app again\n\n" +
+          `API log: ${apiLogPath()}`
       );
-      await shutdown();
-      app.quit();
+      await quitApp();
       return;
     }
 
-    await createWindow();
+    // Confirm health is stable and our child is still alive
+    await new Promise((r) => setTimeout(r, 500));
+    if (!(await fetchHealth()) || (apiProcess && apiProcess.exitCode != null)) {
+      dialog.showErrorBox(
+        "LedgerFlow failed to start",
+        "The local API started then stopped. Check that Documents\\LedgerFlow\\Data is writable.\n\n" +
+          `API log: ${apiLogPath()}`
+      );
+      await quitApp();
+      return;
+    }
+
+    // Hold black splash long enough for logo + at least one quote
+    const elapsed = Date.now() - bootStartedAt;
+    const hold = Math.max(0, SPLASH_MIN_MS - elapsed);
+    if (hold > 0) {
+      await new Promise((r) => setTimeout(r, hold));
+    }
+
+    await showMainUi();
   } catch (err) {
     dialog.showErrorBox("LedgerFlow failed to start", String(err?.message || err));
-    await shutdown();
-    app.quit();
+    await quitApp();
   }
 }
 
-function killApi() {
-  if (!apiProcess) return;
-  try {
-    if (process.platform === "win32") {
-      spawn("taskkill", ["/pid", String(apiProcess.pid), "/T", "/F"], {
-        windowsHide: true,
-        stdio: "ignore",
-      });
-    } else {
-      apiProcess.kill("SIGTERM");
-    }
-  } catch {
-    /* ignore */
-  }
+/**
+ * Fully stop the API sidecar and any orphans.
+ * Must be awaited on quit — fire-and-forget spawn was leaving ledgerflow-api alive.
+ */
+async function killApi() {
+  const pid = apiProcess && apiProcess.pid;
   apiProcess = null;
+
+  if (pid) {
+    killProcessTreeSync(pid);
+  }
+  // Always sweep by image name + port so a missed child cannot block next launch
+  killApiByImageNameSync();
+  for (const p of pidsListeningOnPortSync(API_PORT)) {
+    killProcessTreeSync(p);
+  }
+
+  // Confirm health is gone (port free for next cold start)
+  for (let i = 0; i < 16; i++) {
+    if (!(await fetchHealth(300))) break;
+    await new Promise((r) => setTimeout(r, 150));
+  }
 }
 
 function stopUiServer() {
@@ -286,18 +522,64 @@ function stopUiServer() {
       resolve();
       return;
     }
-    uiServer.close(() => {
+    try {
+      uiServer.close(() => {
+        uiServer = null;
+        resolve();
+      });
+      // Don't hang quit if sockets linger
+      setTimeout(() => {
+        uiServer = null;
+        resolve();
+      }, 1500);
+    } catch {
       uiServer = null;
       resolve();
-    });
+    }
   });
 }
 
+/**
+ * Tear down API + local UI server. Safe to call multiple times.
+ * This is the path that must run on every close — new users must never
+ * inherit a zombie ledgerflow-api on port 8000.
+ */
 async function shutdown() {
-  if (shuttingDown) return;
+  if (shuttingDown) {
+    // Another shutdown in flight — wait briefly for it
+    await new Promise((r) => setTimeout(r, 400));
+    return;
+  }
   shuttingDown = true;
-  killApi();
-  await stopUiServer();
+  try {
+    await killApi();
+  } catch {
+    /* ignore */
+  }
+  try {
+    await stopUiServer();
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Single exit path: cleanup then hard-exit so Windows cannot leave the shell half-open. */
+async function quitApp() {
+  if (quitStarted) return;
+  quitStarted = true;
+  closeAllowed = true; // allow window destruction during teardown
+  try {
+    await shutdown();
+  } catch {
+    /* ignore */
+  }
+  // Final safety sweep (sync) in case async path missed anything
+  try {
+    killApiByImageNameSync();
+  } catch {
+    /* ignore */
+  }
+  app.exit(0);
 }
 
 function registerIpc() {
@@ -321,11 +603,28 @@ function registerIpc() {
     return mainWindow.isMaximized();
   });
   ipcMain.handle("desktop:windowClose", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return { ok: false, blocked: false, message: "No window." };
+    }
+    if (!closeAllowed) {
+      // Trigger the same close-handler dialog
+      mainWindow.close();
+      return {
+        ok: false,
+        blocked: true,
+        message: "Log out before closing to keep your data locked.",
+      };
+    }
+    mainWindow.close();
+    return { ok: true };
   });
   ipcMain.handle("desktop:windowIsMaximized", () => {
     return !!(mainWindow && !mainWindow.isDestroyed() && mainWindow.isMaximized());
   });
+  ipcMain.handle("desktop:setCloseAllowed", (_evt, allowed) => {
+    closeAllowed = !!allowed;
+  });
+  ipcMain.handle("desktop:isCloseAllowed", () => closeAllowed);
 
   /**
    * Download a portable update into the user's Downloads folder.
@@ -441,15 +740,28 @@ app.whenReady().then(() => {
   return boot();
 });
 
-app.on("window-all-closed", async () => {
-  await shutdown();
-  app.quit();
+// Window closed (X / Close button after logout) → full teardown
+app.on("window-all-closed", () => {
+  void quitApp();
 });
 
+// Alt+F4 / OS quit / app.quit() → same teardown (preventDefault until clean)
 app.on("before-quit", (e) => {
-  if (!shuttingDown) {
+  if (!quitStarted) {
     e.preventDefault();
-    shutdown().finally(() => app.exit(0));
+    void quitApp();
+  }
+});
+
+// Last-ditch if the process is about to die without our async path finishing
+process.on("exit", () => {
+  try {
+    if (apiProcess && apiProcess.pid) {
+      killProcessTreeSync(apiProcess.pid);
+    }
+    killApiByImageNameSync();
+  } catch {
+    /* ignore */
   }
 });
 

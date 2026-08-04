@@ -40,6 +40,9 @@ class UserProfileOut(ORMModel):
     created_at: datetime
     updated_at: datetime
     is_active: bool = False  # currently selected workspace
+    # True when this is an extra client workspace with credentials (switch gate)
+    has_password: bool = False
+    workspace_username: Optional[str] = None  # set for extra profiles only
     ledger_count: int = 0
     bank_profile_count: int = 0
     transaction_count: int = 0
@@ -74,6 +77,9 @@ class UserProfileCreate(BaseModel):
     vat_number: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
+    # Extra client workspaces only — required together when adding a new profile on My Profile
+    workspace_username: Optional[str] = Field(None, max_length=120)
+    password: Optional[str] = Field(None, min_length=1, max_length=1024)
     # Copy structure from another profile (clean slate otherwise)
     copy_ledgers_from_id: Optional[int] = None
     copy_bank_profiles_from_id: Optional[int] = None
@@ -83,6 +89,9 @@ class UserProfileCreate(BaseModel):
 
 class UserProfileSwitch(BaseModel):
     profile_id: int
+    # Required when target is an extra locked workspace
+    workspace_username: Optional[str] = Field(None, max_length=120)
+    password: Optional[str] = Field(None, max_length=1024)
 
 
 # ── Settings ──────────────────────────────────────────────────────────────

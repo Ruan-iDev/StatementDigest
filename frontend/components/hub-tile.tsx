@@ -35,6 +35,8 @@ type HubTileBase = {
   className?: string;
   /** Highlight as the active choice (report hub, etc.) */
   selected?: boolean;
+  /** Draw attention (e.g. unallocated transactions waiting) */
+  pulse?: boolean;
 };
 
 type HubTileLinkProps = HubTileBase & {
@@ -56,12 +58,13 @@ function TileInner({
   accent,
   badge,
   selected,
+  pulse,
   showArrow,
 }: HubTileBase & { showArrow: boolean }) {
   return (
     <>
       <div className="flex items-start justify-between gap-3">
-        <div className="hub-tile-icon">
+        <div className={cn("hub-tile-icon", pulse && "hub-tile-icon-pulse")}>
           <Icon className="h-7 w-7" strokeWidth={1.75} />
         </div>
         <div className="flex items-center gap-1.5">
@@ -80,7 +83,8 @@ function TileInner({
             <span
               className={cn(
                 "rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums",
-                BADGE_CLASS[accent]
+                BADGE_CLASS[accent],
+                pulse && "hub-tile-badge-pulse"
               )}
             >
               {badge}
@@ -96,13 +100,18 @@ function TileInner({
           )}
         </div>
         <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+        {pulse && (
+          <p className="text-xs font-medium text-[hsl(var(--neon-magenta))]">
+            Needs attention — unallocated items waiting
+          </p>
+        )}
       </div>
     </>
   );
 }
 
 export function HubTile(props: HubTileProps) {
-  const { title, description, icon, accent, badge, className, selected } = props;
+  const { title, description, icon, accent, badge, className, selected, pulse } = props;
   const shell = cn(
     "hub-tile group min-h-[180px] text-left",
     ACCENT_CLASS[accent],
@@ -112,6 +121,7 @@ export function HubTile(props: HubTileProps) {
     selected && accent === "magenta" && "ring-[hsl(var(--neon-magenta)/0.7)]",
     selected && accent === "violet" && "ring-[hsl(var(--neon-violet)/0.7)]",
     selected && accent === "amber" && "ring-[hsl(var(--neon-amber)/0.7)]",
+    pulse && "hub-tile-pulse",
     className
   );
 
@@ -125,6 +135,7 @@ export function HubTile(props: HubTileProps) {
           accent={accent}
           badge={badge}
           selected={selected}
+          pulse={pulse}
           showArrow={false}
         />
       </button>
@@ -140,6 +151,7 @@ export function HubTile(props: HubTileProps) {
         accent={accent}
         badge={badge}
         selected={selected}
+        pulse={pulse}
         showArrow
       />
     </Link>

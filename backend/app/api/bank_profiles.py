@@ -11,7 +11,12 @@ from app.schemas import (
     CalibrationPreviewResponse,
     DissectResponse,
 )
-from app.services.parsers.base import get_preset, preview_file
+from app.services.parsers.base import (
+    get_preset,
+    is_supported_bank_type,
+    list_supported_banks,
+    preview_file,
+)
 from app.services.parsers.detect import dissect_statement
 
 router = APIRouter(prefix="/bank-profiles", tags=["bank-profiles"])
@@ -30,9 +35,27 @@ def list_profiles(
     )
 
 
+@router.get("/supported-banks")
+def supported_banks():
+    """Banks LedgerFlow has calibrated — used by the guided profile picker.
+
+    Users never calibrate statements themselves; they only pick from this list.
+    """
+    return {"banks": list_supported_banks()}
+
+
 @router.get("/presets/{bank_type}")
 def get_bank_preset(bank_type: str):
-    """Return default calibration for FNB / Discovery / Other."""
+    """Return default calibration for a supported bank type."""
+    if not is_supported_bank_type(bank_type) and bank_type.lower() not in {
+        "fnb",
+        "discovery",
+        "capitec",
+        "nedbank",
+        "other",
+    }:
+        # Still allow known preset keys used by older clients
+        pass
     return get_preset(bank_type)
 
 
@@ -90,11 +113,31 @@ def create_profile(
     db: Session = Depends(get_db),
     user_profile_id: int = Depends(get_active_profile_id),
 ):
-    cal = payload.calibration_data or get_preset(payload.bank_type)
+    # Always start from our calibrated preset; never trust empty DIY recipes
+    bank_type = (payload.bank_type or "").strip() or "Other"
+    if not is_supported_bank_type(bank_type):
+        raise HTTPException(
+            400,
+            "That bank is not available yet. Choose one of the supported banks from the list.",
+        )
+    base = get_preset(bank_type)
+    cal = {**base, **(payload.calibration_data or {})}
+    # Routing flags from our preset always win
+    for key in (
+        "fnb_preset",
+        "discovery_preset",
+        "capitec_preset",
+        "nedbank_preset",
+        "bank_family",
+        "parser",
+        "capitec_business",
+    ):
+        if key in base:
+            cal[key] = base[key]
     profile = BankProfile(
         user_profile_id=user_profile_id,
-        name=payload.name,
-        bank_type=payload.bank_type,
+        name=(payload.name or "").strip() or bank_type,
+        bank_type=bank_type,
         calibration_data=cal,
     )
     db.add(profile)

@@ -1,6 +1,6 @@
 # Decisions log
 
-**Last updated:** 2026-07-31 (end of day)  
+**Last updated:** 2026-08-04 · v1.3.0  
 
 Record **agreed** product/tech decisions so we don’t re-debate after session drops.  
 Format: date · decision · why · status.
@@ -38,6 +38,11 @@ Format: date · decision · why · status.
 | 2026-07-31 | **Next phase**: (1) Capture Discovery data → (2) calibrate Reporting → (3) bulk Capitec/Nedbank later | Reporting needs real numbers | Agreed |
 | 2026-08-04 | **Distribution targets: (A) installable PC app + (B) installable mobile app** — not public multi-tenant SaaS first | Data stays on-device; testers install; privacy | Agreed (direction) |
 | 2026-08-04 | **PC app** packages current stack (UI + local API + SQLite on disk) as a real installer | Reuse Next/FastAPI; file on user’s machine | Agreed (direction) |
+| 2026-08-04 | **Trial Option C**: after 30 days, view books OK; block writes/exports until license key | Fair trial without hard wipe | Agreed · v1.3 |
+| 2026-08-04 | **Primary workspace** = app login only; **extra profiles** set workspace username+password at create; switch = full-app gate | Multi-client aides; no separate “lock form” on My Profile | Agreed · v1.3 |
+| 2026-08-04 | Settings hub = five tiles (Profile, Bank, Ledgers, Rules, Preferences); hide rules maintenance | Cleaner setup surface | Agreed · v1.3 |
+| 2026-08-04 | Dashboard monthly chart = **same** Reporting `MonthlyComparisonChart` component | One source of truth; not a fork | Agreed · v1.3 |
+| 2026-08-04 | Returning login: username+password only (no register tabs); register via first-time setup | Less confusion for existing users | Agreed · v1.3 |
 | 2026-08-04 | **Mobile**: Android via **APK** first; iOS is a separate store build (not APK) | APK ≠ all phones | Agreed (direction) |
 | 2026-08-04 | Core product logic stays one backend family; shells wrap it (desktop / mobile) | Avoid two unrelated codebases | Agreed (direction) |
 
