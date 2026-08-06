@@ -35,6 +35,7 @@ type Props = {
  * 3) Save — our preset is applied automatically
  *
  * Users never upload samples or map columns.
+ * Available in guest mode so users can test their bank before creating an account.
  */
 export function BankProfileWizard({
   open,

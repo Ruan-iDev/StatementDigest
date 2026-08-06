@@ -19,7 +19,7 @@ This document explains how to **keep that accuracy from being tainted** as we ke
 | Bank / format | Module | Status | Human verification |
 |---------------|--------|--------|--------------------|
 | **Discovery Personal** (PDF text) | `discovery_pdf.py` | ✅ Edition-1 locked | **226 txs · 100% accurate** |
-| **FNB Gold Business** (PDF text) | `fnb_pdf.py` | ✅ Edition-1 locked | **1000+ txs · 100% accurate** |
+| **FNB** brand (Gold Business EN + Fusion AF personal) | `fnb_pdf.py` | ✅ Multi-layout island | Gold Business **1000+ · 100%**; Fusion AF edition-1 sample |
 | **Capitec Business** (PDF table) | `capitec_pdf.py` | ✅ Edition-1 locked | Sample sealed; **bulk import TBD** |
 | **Nedbank Personal** (PDF text) | `nedbank_pdf.py` | ✅ Edition-1 locked | Sample sealed; **bulk import TBD** |
 | Other (Absa, Standard, etc.) | new modules only | Not started | — |
@@ -57,14 +57,19 @@ If a change would touch a **locked** module, stop and ask: *Is this a proven reg
 - Bank-side carry-overs are not app ghosts  
 - **Do not taint** for FNB / Capitec / Nedbank work  
 
-### FNB edition-1 contract (Gold Business — LOCKED)
+### FNB edition-1 contract (multi-layout island)
 
-- Human verification: **1000+ transactions · 100% accurate** (2026-07-31)  
-- Text lines like `26 May … 21,845.00Cr` / bare amounts as debits  
-- Year from `Statement Period` when day-month has no year  
-- Regression: `test_fnb_business_text_parser_amounts_and_year`  
-- Scope: **Gold Business PDF text** (not every FNB personal layout without fixtures)  
+**Brand dropdown label:** `FNB` — backend may try several calibrated layouts.
+
+| Layout | Status | Notes |
+|--------|--------|-------|
+| **Gold Business (English)** | ✅ LOCKED | Human: **1000+ txs · 100% accurate** (2026-07-31). Lines like `26 May … 21,845.00Cr`. Regression: `test_fnb_business_text_parser_amounts_and_year` |
+| **Fusion Private Wealth (Afrikaans personal)** | ✅ Edition-1 sample | `25Okt … 42,000.00Kt` · Kt=krediet in, bare=debit. Regression: `test_fnb_fusion_afrikaans_personal_text_parser` |
+
+- Module: `fnb_pdf.py` only (additive layouts; Gold Business rules stay locked)  
+- Auto-select: orchestrator keeps the layout with more recovered lines  
 - **Do not taint** for Capitec / Nedbank / Discovery work  
+- New FNB products → new layout function + fixture test, not rewrite of locked Gold Business
 
 ### Capitec Business edition-1 contract (LOCKED)
 

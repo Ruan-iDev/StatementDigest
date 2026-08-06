@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { api, getAuthToken, isGuestMode, setAuthToken } from "@/lib/api";
+import { api, getAuthToken, isGuestMode, setAuthToken, setStoredProfileId } from "@/lib/api";
 import { AuthScreen } from "@/components/auth-screen";
 import { AppSplash } from "@/components/app-splash";
 import { FirstTimeSetup } from "@/components/first-time-setup";
@@ -56,6 +56,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const s = await api.auth.status();
       setHasUsers(s.has_users);
+      // Fresh install (or Documents\LedgerFlow wiped) — drop any leftover
+      // workspace id so first-time registration cannot 404 on a ghost profile.
+      if (!s.has_users) {
+        setStoredProfileId(null);
+      }
       const token = getAuthToken();
       if (token) {
         try {
@@ -137,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* ignore */
     }
     setAuthToken(null);
+    // Keep profile id across logout for same install; only cleared on wipe/fresh install.
     setAuthenticated(false);
     setUsername(null);
     setIsGuest(false);

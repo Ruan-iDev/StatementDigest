@@ -59,17 +59,13 @@ export function Sidebar() {
   const [unallocatedCount, setUnallocatedCount] = useState(0);
 
   const refreshUnallocated = useCallback(async () => {
-    if (isGuest) {
-      setUnallocatedCount(0);
-      return;
-    }
     try {
       const s = await api.dashboard();
       setUnallocatedCount(s.pending_count ?? 0);
     } catch {
       /* offline / not ready — leave last known */
     }
-  }, [isGuest]);
+  }, []);
 
   useEffect(() => {
     void refreshUnallocated();
@@ -92,7 +88,7 @@ export function Sidebar() {
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold leading-none tracking-tight">LedgerFlow</div>
             <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-              {isGuest ? "Guest · nothing saved" : active ? active.name : "local · private"}
+              {isGuest ? "Guest · full access" : active ? active.name : "local · private"}
             </div>
           </div>
         </div>
@@ -161,19 +157,17 @@ export function Sidebar() {
         })}
       </nav>
       <div className="space-y-1 border-t border-border/80 p-2.5">
-        {!isGuest && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start gap-2 rounded-xl text-amber-700 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
-            disabled={readOnly}
-            title={readOnly ? "Read-only — wipe locked" : undefined}
-            onClick={() => setWipeOpen(true)}
-          >
-            <Eraser className="h-4 w-4" />
-            Wipe transactions
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start gap-2 rounded-xl text-amber-700 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+          disabled={readOnly}
+          title={readOnly ? "Read-only — wipe locked" : undefined}
+          onClick={() => setWipeOpen(true)}
+        >
+          <Eraser className="h-4 w-4" />
+          Wipe transactions
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -206,24 +200,22 @@ export function Sidebar() {
           {isGuest ? "Exit guest" : `Log out${username ? ` (${username})` : ""}`}
         </Button>
       </div>
-      {!isGuest && (
-        <WipeTransactionsModal
-          open={wipeOpen}
-          onClose={() => setWipeOpen(false)}
-          onWiped={() => {
-            if (typeof window !== "undefined") {
-              const path = window.location.pathname;
-              if (
-                path.startsWith("/pending") ||
-                path === "/" ||
-                path.startsWith("/reports")
-              ) {
-                window.setTimeout(() => window.location.reload(), 400);
-              }
+      <WipeTransactionsModal
+        open={wipeOpen}
+        onClose={() => setWipeOpen(false)}
+        onWiped={() => {
+          if (typeof window !== "undefined") {
+            const path = window.location.pathname;
+            if (
+              path.startsWith("/pending") ||
+              path === "/" ||
+              path.startsWith("/reports")
+            ) {
+              window.setTimeout(() => window.location.reload(), 400);
             }
-          }}
-        />
-      )}
+          }
+        }}
+      />
     </aside>
   );
 }

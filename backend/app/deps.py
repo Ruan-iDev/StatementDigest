@@ -32,16 +32,20 @@ def get_active_profile_id(
     db: Session = Depends(get_db),
     x_profile_id: Optional[str] = Header(None, alias="X-Profile-Id"),
 ) -> int:
-    """Resolve active workspace: header wins, else stored setting, else first profile."""
+    """Resolve active workspace: header wins, else stored setting, else first profile.
+
+    Stale client headers are common after wiping Documents/LedgerFlow while the UI
+    still has an old localStorage profile id — fall through instead of 404 so
+    registration and post-login APIs can recover.
+    """
     if x_profile_id:
         try:
             pid = int(x_profile_id)
         except ValueError as exc:
             raise HTTPException(400, "Invalid X-Profile-Id") from exc
-        prof = db.get(UserProfile, pid)
-        if not prof:
-            raise HTTPException(404, "User profile not found")
-        return pid
+        if db.get(UserProfile, pid):
+            return pid
+        # Header points at a deleted/wiped profile — ignore and resolve normally
 
     stored = _get_setting(db, ACTIVE_KEY)
     if stored:

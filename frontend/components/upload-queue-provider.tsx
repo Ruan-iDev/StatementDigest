@@ -142,7 +142,7 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
   const processQueue = React.useCallback(async (bankProfileId?: string) => {
     const pid = bankProfileId || profileIdRef.current;
     if (!pid) {
-      setError("Select a bank profile first.");
+      setError("Select your bank first.");
       return;
     }
     if (runningRef.current) return;

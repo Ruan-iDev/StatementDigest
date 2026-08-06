@@ -102,6 +102,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       // Session dead — clear token so AuthGate can show login
       setAuthToken(null);
     }
+    // Data folder wiped but browser still has old workspace id → drop it so
+    // the next request can resolve the real active profile.
+    if (
+      res.status === 404 &&
+      typeof window !== "undefined" &&
+      typeof detail === "string" &&
+      /user profile not found|no user profiles configured|active profile not found/i.test(detail)
+    ) {
+      setStoredProfileId(null);
+    }
     throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   if (res.status === 204) return undefined as T;
@@ -197,14 +207,17 @@ export type BankProfile = {
   updated_at: string;
 };
 
-/** Entry from GET /bank-profiles/supported-banks (calibrated banks only). */
+/** Entry from GET /bank-profiles/supported-banks (brand catalog). */
 export type SupportedBank = {
   id: string;
   bank_type: string;
+  /** Brand label shown in the UI (e.g. FNB, Capitec). */
   label: string;
   description: string;
   suggested_name: string;
   formats?: string;
+  /** Internal calibrated layouts tried automatically for this brand. */
+  layouts?: { id: string; label: string; status: string }[];
 };
 
 export type Transaction = {

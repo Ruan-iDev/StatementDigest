@@ -15,8 +15,9 @@ export function GuestBanner() {
         <p className="flex items-start gap-2 text-xs leading-snug sm:text-sm">
           <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--neon-amber))]" />
           <span>
-            <strong>Guest mode</strong> — nothing is saved. You can look around; create an account
-            to upload statements and keep your ledgers.
+            <strong>Guest mode</strong> — full app access so you can test your bank, import, and
+            reports. Data is stored locally on this device. Create an account when you want a locked
+            private login.
           </span>
         </p>
         <div className="flex shrink-0 flex-wrap items-center gap-3">
@@ -26,7 +27,7 @@ export function GuestBanner() {
             className="text-xs font-semibold underline underline-offset-2"
             onClick={() => void logout()}
           >
-            Exit guest &amp; sign in
+            Exit guest &amp; create account
           </button>
         </div>
       </div>

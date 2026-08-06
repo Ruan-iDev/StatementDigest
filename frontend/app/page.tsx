@@ -52,7 +52,7 @@ export default function DashboardPage() {
         <HubTile
           href="/upload"
           title="Upload Statement"
-          description="Import a bank PDF or CSV and match it to a bank profile."
+          description="Pick your bank, then import a PDF or CSV statement."
           icon={Upload}
           accent="cyan"
         />

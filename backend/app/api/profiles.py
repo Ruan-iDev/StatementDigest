@@ -150,12 +150,15 @@ def switch_profile(
 def create_profile(
     payload: UserProfileCreate,
     db: Session = Depends(get_db),
-    active_id: int = Depends(get_active_profile_id),
 ):
     """Create a clean-slate profile; optionally copy ledgers and/or bank profiles.
 
     First profile (registration) needs no workspace credentials — app login protects it.
     Extra profiles on My Profile should send workspace_username + password together.
+
+    Intentionally does NOT depend on get_active_profile_id: day-zero registration
+    must work even when the DB was wiped and the client still sends a stale
+    X-Profile-Id (or there is no active profile yet).
     """
     name = (payload.name or "").strip() or "New Profile"
     ptype = _normalize_profile_type(payload.profile_type)

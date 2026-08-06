@@ -50,15 +50,15 @@ const CARDS: GuideCard[] = [
   },
   {
     n: 3,
-    title: "Bank profile",
-    body: "Pick a bank we already know how to read. No mapping columns — that work is ours.",
+    title: "Select your bank",
+    body: "On Upload, pick a bank we already know how to read. No mapping columns — that work is ours.",
     icon: <Building2 className="h-5 w-5" />,
     accent: "cyan",
   },
   {
     n: 4,
     title: "Upload",
-    body: "Three steps: choose profile → add statements → process. Calm and guided.",
+    body: "Three steps: select bank → add statements → process. Calm and guided.",
     icon: <Upload className="h-5 w-5" />,
     accent: "cyan",
   },

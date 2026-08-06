@@ -5,6 +5,35 @@
 
 ---
 
+## v1.4.0 — 2026-08-06
+
+**Theme:** Guest can prove the product; bank pick simplified; FNB multi-layout island.
+
+### Shipped in this release
+
+#### Guest = full product
+- Guest mode is no longer “look only” — **bank import, ledgers, rules, reports** all work with **local SQLite writes**
+- Still no account password; free registered account remains for locked private login
+- Lets a tester prove *their* bank works before subscribe
+
+#### Banks without DIY profiles
+- **No user-facing bank profiles** in Settings / upload flow
+- Upload Step 1: **Select your bank** (supported brands only)
+- Backend still auto-creates an internal bank profile for import routing
+- Brand dropdown only: **FNB, Capitec, Discovery, Nedbank** — product/language layouts tried on import
+
+#### FNB multi-layout island
+- **Gold Business (English)** remains locked (1000+ txs · 100% human verified)
+- **Fusion Private Wealth (Afrikaans personal)** edition-1 layout added (`Kt` credit / bare debit)
+- Orchestrator keeps the layout with more recovered lines; Gold Business rules stay locked
+
+### Upgrade notes
+- Close previous portable EXE; run `LedgerFlow-1.4.0-Portable.exe`
+- Data path unchanged: `Documents\LedgerFlow\Data`
+- Existing workspaces and registered accounts continue as before; Guest now persists on this PC
+
+---
+
 ## v1.3.0 — 2026-08-04
 
 **Theme:** Desktop product polish — first-run journey, trial, multi-client workspaces, dashboard insights.
@@ -61,7 +90,7 @@
 
 ---
 
-## Future (planned after v1.3.0)
+## Future (planned after v1.4.0)
 
 | Priority | Item |
 |----------|------|

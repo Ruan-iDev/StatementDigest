@@ -135,7 +135,8 @@ export function AuthScreen({ hasUsers, onAuthenticated }: Props) {
             Welcome back, {greetAs}
           </h1>
           <p className="mx-auto mt-4 max-w-md text-center text-sm leading-relaxed text-white/55">
-            Log in to continue your books, browse as a guest, or close the app.
+            Log in to continue your books, or enter as Guest to test bank import and the full app
+            without creating an account first.
           </p>
 
           {error && <ErrorBox message={error} />}
@@ -158,8 +159,12 @@ export function AuthScreen({ hasUsers, onAuthenticated }: Props) {
               onClick={() => void enterAsGuest()}
             >
               <UserRound className="h-4 w-4" />
-              {busy ? "Please wait…" : "Log in as Guest"}
+              {busy ? "Please wait…" : "Continue as Guest"}
             </Button>
+            <p className="text-center text-[11px] leading-relaxed text-white/40">
+              Guest can use the full app (upload, ledgers, reports). Create an account when you want
+              a password-protected login on this device.
+            </p>
           </div>
         </div>
 

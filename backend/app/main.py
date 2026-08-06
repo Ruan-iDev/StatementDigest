@@ -32,16 +32,9 @@ app_settings = get_settings()
 app = FastAPI(
     title="LedgerFlow API",
     description="Local-first personal finance: statements → ledgers → P&L",
-    version="1.3.0",
+    version="1.4.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=app_settings.cors_origins + ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Public paths (no session required)
 _AUTH_PUBLIC_EXACT = {
@@ -65,18 +58,6 @@ _LICENSE_WRITE_ALWAYS = (
     "/api/license/",
 )
 
-# Guest may call these non-GET endpoints only
-_GUEST_WRITE_ALLOWED = {
-    "/api/auth/logout",
-    # Reveal local folder only — no app data is written or uploaded
-    "/api/local-data/open",
-}
-
-_GUEST_WRITE_BLOCK_MSG = (
-    "Guest mode — nothing is saved. Create an account if you want to keep your data."
-)
-
-
 @app.middleware("http")
 async def require_auth_middleware(request: Request, call_next):
     path = request.url.path
@@ -94,11 +75,10 @@ async def require_auth_middleware(request: Request, call_next):
     if not token:
         return JSONResponse({"detail": "Not authenticated. Please log in."}, status_code=401)
 
-    # Ephemeral guest session (in-memory only — no account, no durable session row)
+    # Guest sessions: full app access for try-before-account (writes allowed).
+    # Token is in-memory only; data still lands in local SQLite like a normal session.
     if is_guest_token(token):
         request.state.is_guest = True
-        if request.method not in ("GET", "HEAD", "OPTIONS") and path not in _GUEST_WRITE_ALLOWED:
-            return JSONResponse({"detail": _GUEST_WRITE_BLOCK_MSG}, status_code=403)
         return await call_next(request)
 
     request.state.is_guest = False
@@ -154,6 +134,18 @@ async def require_auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# CORS must be outermost so early 401/402/403 JSONResponses from auth still get
+# Access-Control-* headers. (add_middleware inserts at front of the stack.)
+# Do not use "*" with allow_credentials=True — browsers reject that combo.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=app_settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 app.include_router(auth.router, prefix="/api")
 app.include_router(license_api.router, prefix="/api")
 app.include_router(profiles.router, prefix="/api")
@@ -187,7 +179,8 @@ def health():
     # Keep in sync with repo root VERSION (desktop builds may set LEDGERFLOW_APP_VERSION).
     import os
 
-    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "1.3.0").strip() or "1.3.0"
+    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "1.4.0").strip() or "1.4.0"
+
     return {
         "status": "ok",
         "app": "LedgerFlow",

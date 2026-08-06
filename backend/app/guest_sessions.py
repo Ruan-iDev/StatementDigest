@@ -1,4 +1,8 @@
-"""Ephemeral in-memory guest sessions — no account, no durable auth rows."""
+"""In-memory guest auth tokens — no AppUser / durable AuthSession rows.
+
+Guest tokens authenticate API access (including writes). App data still uses
+the local SQLite database like any other session.
+"""
 
 from __future__ import annotations
 

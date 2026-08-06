@@ -159,7 +159,31 @@ export function FirstTimeSetup({ onAuthenticated }: Props) {
 
     setBusy(true);
     try {
-      const auth = await api.auth.register({ username: u, password });
+      // Wipe stale workspace id left over from a previous install / deleted
+      // Documents\LedgerFlow folder — otherwise create/list profile calls 404
+      // with "User profile not found" even though the new account was created.
+      setStoredProfileId(null);
+
+      let auth: {
+        token: string;
+        username: string;
+        user_id: number;
+        message: string;
+        is_guest?: boolean;
+      };
+      try {
+        auth = await api.auth.register({ username: u, password });
+      } catch (regErr: unknown) {
+        // Partial prior attempt: account row exists, profile create never finished.
+        // Log in with the same credentials and continue creating the workspace.
+        const regMsg = regErr instanceof Error ? regErr.message : "";
+        if (/already taken|already exists/i.test(regMsg)) {
+          auth = await api.auth.login({ username: u, password });
+        } else {
+          throw regErr;
+        }
+      }
+
       // Must store token before profile APIs (they require Authorization)
       setAuthToken(auth.token);
 
@@ -195,6 +219,11 @@ export function FirstTimeSetup({ onAuthenticated }: Props) {
         setError(
           "Could not reach the local API. Fully quit LedgerFlow (Task Manager → end LedgerFlow / " +
             "ledgerflow-api), then open the app once and retry. Do not rename the Data folder while open."
+        );
+      } else if (/invalid username or password/i.test(msg)) {
+        setError(
+          "That username already exists with a different password. Choose another username, " +
+            "or use Log in if this is your account."
         );
       } else {
         setError(msg);
@@ -247,9 +276,9 @@ export function FirstTimeSetup({ onAuthenticated }: Props) {
               Welcome, new user
             </h1>
             <p className="mx-auto mt-5 max-w-md text-sm leading-relaxed text-white/55 sm:text-base">
-              Click <span className="text-white/80">Next</span> if you want to set up your profile,
-              or choose <span className="text-white/80">Log in as Guest</span> to jump in and browse
-              the app without any setup.
+              Create a free account for a locked private login, or continue as{" "}
+              <span className="text-white/80">Guest</span> to test the full app first — bank
+              profiles, real imports, and reports included.
             </p>
 
             {error && <ErrorBox message={error} />}
@@ -261,7 +290,7 @@ export function FirstTimeSetup({ onAuthenticated }: Props) {
                 disabled={busy}
                 onClick={() => go("personal")}
               >
-                Next
+                Create free account
                 <ArrowRight className="h-4 w-4" />
               </Button>
               <Button
@@ -272,13 +301,13 @@ export function FirstTimeSetup({ onAuthenticated }: Props) {
                 onClick={() => void enterAsGuest()}
               >
                 <UserRound className="h-4 w-4" />
-                {busy ? "Please wait…" : "Log in as Guest"}
+                {busy ? "Please wait…" : "Continue as Guest"}
               </Button>
             </div>
 
             <p className="mx-auto mt-6 max-w-sm text-[11px] leading-relaxed text-white/35">
-              Guest mode saves nothing. When you are ready for a locked private account, set up your
-              profile.
+              Both paths get full app access and the 30-day trial on this device. Guest has no
+              password; create an account when you want a protected login.
             </p>
           </div>
         )}

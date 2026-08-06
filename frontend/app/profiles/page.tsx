@@ -514,7 +514,6 @@ export default function MyProfilePage() {
           <Button
             size="sm"
             className="shrink-0"
-            disabled={isGuest}
             onClick={openCreateProfile}
           >
             <Plus className="mr-1.5 h-4 w-4" />
@@ -777,7 +776,7 @@ export default function MyProfilePage() {
                         type="file"
                         accept="image/png,image/jpeg,image/webp,image/gif"
                         className="hidden"
-                        disabled={logoBusy || isGuest}
+                        disabled={logoBusy}
                         onChange={(e) => {
                           const f = e.target.files?.[0] || null;
                           void onLogoPick(f);
@@ -793,7 +792,7 @@ export default function MyProfilePage() {
                         type="button"
                         size="sm"
                         variant="ghost"
-                        disabled={logoBusy || isGuest}
+                        disabled={logoBusy}
                         onClick={() => void removeLogo()}
                       >
                         <Trash2 className="mr-1 h-3.5 w-3.5" />
@@ -880,7 +879,7 @@ export default function MyProfilePage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <Button onClick={saveDetails} disabled={saving || isGuest}>
+              <Button onClick={saveDetails} disabled={saving}>
                 {saving ? "Saving…" : "Save details"}
               </Button>
             </div>
@@ -1104,7 +1103,7 @@ export default function MyProfilePage() {
             <Button type="button" variant="ghost" onClick={closeCreateProfile} disabled={creating}>
               Cancel
             </Button>
-            <Button onClick={() => void createProfile()} disabled={creating || isGuest}>
+            <Button onClick={() => void createProfile()} disabled={creating}>
               {creating ? "Creating…" : "Create profile & switch"}
             </Button>
           </div>

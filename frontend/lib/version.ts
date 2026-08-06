@@ -8,7 +8,8 @@
 
 export const APP_VERSION =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_APP_VERSION?.trim()) ||
-  "1.3.0";
+  "1.4.0";
+
 
 /**
  * Public HTTPS URL of the update manifest JSON (latest.json).

@@ -167,45 +167,63 @@ def get_preset(bank_type: str) -> dict[str, Any]:
 
 
 # Banks we have calibrated and approved for end users (no DIY calibration).
-# Only entries here appear in the "Which bank are you using?" dropdown.
+# UI shows brand only (FNB, Discovery, …). Each brand may have several
+# internal layouts tried automatically on upload (see `layouts`).
 SUPPORTED_BANKS: list[dict[str, Any]] = [
     {
-        "id": "discovery_personal",
+        "id": "discovery",
         "bank_type": "Discovery",
-        "label": "Discovery Bank — Personal",
-        "description": "Personal PDF statements. Calibrated and human-verified.",
-        "suggested_name": "Discovery Personal",
+        "label": "Discovery",
+        "description": "PDF statements we have calibrated (personal layouts).",
+        "suggested_name": "Discovery",
         "formats": "PDF",
+        "layouts": [
+            {"id": "personal_en", "label": "Personal (English)", "status": "locked"},
+        ],
     },
     {
-        "id": "fnb_gold_business",
+        "id": "fnb",
         "bank_type": "FNB",
-        "label": "FNB — Gold Business",
-        "description": "Gold Business PDF statements. Calibrated and human-verified.",
-        "suggested_name": "FNB Gold Business",
+        "label": "FNB",
+        "description": "PDF statements we have calibrated (business + personal layouts).",
+        "suggested_name": "FNB",
         "formats": "PDF",
+        "layouts": [
+            {"id": "gold_business_en", "label": "Gold Business (English)", "status": "locked"},
+            {
+                "id": "fusion_private_wealth_af",
+                "label": "Fusion Private Wealth (Afrikaans personal)",
+                "status": "edition-1",
+            },
+        ],
     },
     {
-        "id": "capitec_business",
+        "id": "capitec",
         "bank_type": "Capitec",
-        "label": "Capitec — Business",
-        "description": "Business PDF statements (table layout with Fees column).",
-        "suggested_name": "Capitec Business",
+        "label": "Capitec",
+        "description": "PDF statements we have calibrated (business layouts).",
+        "suggested_name": "Capitec",
         "formats": "PDF",
+        "layouts": [
+            {"id": "business_en", "label": "Business (English)", "status": "locked"},
+        ],
     },
     {
-        "id": "nedbank_personal",
+        "id": "nedbank",
         "bank_type": "Nedbank",
-        "label": "Nedbank — Personal",
-        "description": "Personal current-account PDF statements.",
-        "suggested_name": "Nedbank Personal",
+        "label": "Nedbank",
+        "description": "PDF statements we have calibrated (personal layouts).",
+        "suggested_name": "Nedbank",
         "formats": "PDF",
+        "layouts": [
+            {"id": "personal_en", "label": "Personal (English)", "status": "locked"},
+        ],
     },
 ]
 
 
 def list_supported_banks() -> list[dict[str, Any]]:
-    """Public catalog for the bank-profile picker (no raw calibration payloads)."""
+    """Public catalog for brand picker (includes internal layout metadata)."""
     return [dict(row) for row in SUPPORTED_BANKS]
 
 

@@ -108,6 +108,58 @@ Closing Balance 1,575.00Cr
     assert sum((t.amount for t in txs), Decimal("0")) == Decimal("1575.00")
 
 
+def test_fnb_fusion_afrikaans_personal_text_parser():
+    """FNB Fusion Private Wealth (Afrikaans) — additive layout, does not replace Gold Business.
+
+    Kt = krediet (inflow), bare amount = debit. Day+month may have no space (25Okt).
+    """
+    from app.services.parsers.fnb_pdf import (
+        parse_fnb_fusion_af_text,
+        parse_fnb_statement_text,
+    )
+
+    sample = """
+FNBFUSIONPRIVATEWEALTHACC
+fnb.co.za
+FirstNationalBank-'nafdelingvanFirstRandBankBeperk.
+StaatPeriode:24Oktober2024tot23November2024
+Staatdatum:23November2024
+TransaksiesinRAND(ZAR)
+Datum Beskrywing Bedrag Saldo Bank-koste
+25Okt Smart-ApBetalingVanILoveYouBabes 42,000.00Kt 41,278.48Kt
+25Okt Smart-ApOorplasingNaPayment 20,000.00 21,278.48Kt
+25Okt Smart-ApBetalingNaPayment JustIncase 5,000.00 16,278.48Kt
+25Okt DebietOrderKrediet437TWage/Salary00056663 33,804.31Kt 49,810.29Kt
+26Okt DiensFooi 595.00 29,784.18Kt
+01Nov PowerballAankopePowerballPurchase 15.00 16,315.27Kt
+"""
+    fusion = parse_fnb_fusion_af_text(sample)
+    assert len(fusion) == 6
+    assert str(fusion[0].date) == "2024-10-25"
+    assert fusion[0].amount == Decimal("42000.00")  # Kt credit
+    assert fusion[1].amount == Decimal("-20000.00")  # bare debit
+    assert fusion[3].amount == Decimal("33804.31")  # Kt credit
+    assert fusion[4].amount == Decimal("-595.00")  # service fee debit
+    assert str(fusion[5].date) == "2024-11-01"
+
+    # Orchestrator should prefer Fusion when Gold Business matches 0 lines
+    auto = parse_fnb_statement_text(sample)
+    assert len(auto) == 6
+    assert auto[0].amount == Decimal("42000.00")
+
+
+def test_supported_banks_are_brand_labels():
+    """Dropdown shows brand names; layouts live as backend metadata."""
+    from app.services.parsers.base import list_supported_banks
+
+    banks = list_supported_banks()
+    labels = {b["label"] for b in banks}
+    assert labels == {"Discovery", "FNB", "Capitec", "Nedbank"}
+    fnb = next(b for b in banks if b["bank_type"] == "FNB")
+    assert any(L["id"] == "gold_business_en" for L in fnb["layouts"])
+    assert any(L["id"] == "fusion_private_wealth_af" for L in fnb["layouts"])
+
+
 def test_nedbank_personal_text_parser_debits_credits_fees():
     """Nedbank Personal edition-1 contract (LOCKED).
 

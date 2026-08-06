@@ -39,8 +39,26 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       const current = list.find((p) => p.is_active) || list[0] || null;
       setActive(current);
       if (current) setStoredProfileId(current.id);
+      else setStoredProfileId(null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load profiles");
+      const msg = e instanceof Error ? e.message : "Failed to load profiles";
+      // Stale X-Profile-Id after a data wipe — clear and retry once without header
+      if (/user profile not found|no user profiles configured/i.test(msg)) {
+        setStoredProfileId(null);
+        try {
+          const list = await api.profiles.list();
+          setProfiles(list);
+          const current = list.find((p) => p.is_active) || list[0] || null;
+          setActive(current);
+          if (current) setStoredProfileId(current.id);
+          setError(null);
+          return;
+        } catch (retryErr: unknown) {
+          setError(retryErr instanceof Error ? retryErr.message : msg);
+          return;
+        }
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

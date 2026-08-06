@@ -36,15 +36,18 @@ def to_decimal(value: object) -> Decimal:
         negative = True
         s = s[1:-1].strip()
 
-    # FNB-style trailing Cr / CR / Credit (inflow)
-    cr_match = re.search(r"\b(cr|credit)\b\.?$", s, flags=re.IGNORECASE)
+    # FNB-style trailing Cr / CR / Credit / Afrikaans Kt / Krediet (inflow)
+    cr_match = re.search(r"\b(cr|credit|kt|krediet)\b\.?$", s, flags=re.IGNORECASE)
     if cr_match:
         is_credit = True
         s = s[: cr_match.start()].strip()
-    # Also "123.45Cr" without space
-    elif re.search(r"(?i)cr\.?$", s) and not re.search(r"(?i)card", s):
+    # Also "123.45Cr" / "123.45Kt" without space
+    elif re.search(r"(?i)(cr|kt)\.?$", s) and not re.search(r"(?i)card", s):
         is_credit = True
-        s = re.sub(r"(?i)cr\.?$", "", s).strip()
+        s = re.sub(r"(?i)(cr|kt)\.?$", "", s).strip()
+    # Afrikaans / English debit markers on the amount itself (strip only)
+    elif re.search(r"(?i)(dr|dt|debiet)\.?$", s):
+        s = re.sub(r"(?i)(dr|dt|debiet)\.?$", "", s).strip()
 
     # Explicit leading minus before currency (Discovery-style "-R 50.00")
     if re.match(r"^[\-−–]", s):
@@ -99,12 +102,17 @@ def apply_amount_style(raw: object, amount_style: str | None) -> Decimal:
     style = (amount_style or "normal").lower()
     text = str(raw or "").strip()
 
-    if style in ("credit_suffix_cr", "fnb_cr"):
-        has_cr = bool(re.search(r"(?i)\bcr\b|\bcredit\b|cr\.?$", text))
-        # Strip Cr for magnitude
-        cleaned = re.sub(r"(?i)\b(cr|credit)\b\.?", "", text).strip()
+    if style in ("credit_suffix_cr", "fnb_cr", "credit_suffix_cr_kt"):
+        # English Cr/Credit or Afrikaans Kt/Krediet = inflow; bare / Dr / Dt = outflow
+        has_credit = bool(
+            re.search(r"(?i)\b(cr|credit|kt|krediet)\b|(?:cr|kt)\.?$", text)
+        )
+        cleaned = re.sub(
+            r"(?i)\b(cr|credit|kt|krediet|dr|dt|debiet)\b\.?", "", text
+        ).strip()
+        cleaned = re.sub(r"(?i)(cr|kt|dr|dt)\.?$", "", cleaned).strip()
         mag = abs(to_decimal(cleaned if cleaned else text))
-        return mag if has_cr else -mag
+        return mag if has_credit else -mag
 
     d = to_decimal(raw)
     if style == "invert":

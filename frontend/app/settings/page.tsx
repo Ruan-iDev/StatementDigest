@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, BookOpen, Zap, UserRound, SlidersHorizontal } from "lucide-react";
+import { BookOpen, Zap, UserRound, SlidersHorizontal } from "lucide-react";
 import { HubTile } from "@/components/hub-tile";
 import { useProfile } from "@/components/profile-provider";
 
@@ -15,7 +15,7 @@ export default function SettingsPage() {
         </p>
         <h1 className="page-title">Settings</h1>
         <p className="page-subtitle max-w-xl">
-          Profile, banks, ledgers, rules, and preferences — five clear hubs.
+          Profile, ledgers, rules, and preferences. Choose your bank when you upload statements.
           {active ? (
             <>
               {" "}
@@ -32,13 +32,6 @@ export default function SettingsPage() {
           description="Personal details, local data file location, and switch workspaces (never mixed)."
           icon={UserRound}
           accent="violet"
-        />
-        <HubTile
-          href="/bank-profiles"
-          title="Setup Bank Profile"
-          description="Pick a calibrated bank and name the profile — no DIY mapping."
-          icon={Building2}
-          accent="cyan"
         />
         <HubTile
           href="/ledgers"

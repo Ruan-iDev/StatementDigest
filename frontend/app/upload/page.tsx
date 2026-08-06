@@ -14,12 +14,11 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { api, type BankProfile } from "@/lib/api";
+import { api, type SupportedBank } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
-import { BankProfileWizard } from "@/components/bank-profile-wizard";
 import {
   UploadDisclaimerModal,
   type DisclaimerContent,
@@ -39,6 +38,23 @@ function statusLabel(s: QueueStatus): string {
     case "failed":
       return "Failed";
   }
+}
+
+/** Find or create the internal bank profile for a calibrated bank (hidden from Settings). */
+async function ensureBankProfileId(bank: SupportedBank): Promise<number> {
+  const list = await api.bankProfiles.list();
+  const existing = list.find(
+    (p) => (p.bank_type || "").toLowerCase() === (bank.bank_type || "").toLowerCase()
+  );
+  if (existing) return existing.id;
+
+  const calibration = await api.bankProfiles.preset(bank.bank_type);
+  const created = await api.bankProfiles.create({
+    name: bank.suggested_name || bank.label,
+    bank_type: bank.bank_type,
+    calibration_data: calibration,
+  });
+  return created.id;
 }
 
 export default function UploadPage() {
@@ -62,47 +78,61 @@ export default function UploadPage() {
     counts,
   } = useUploadQueue();
 
-  const [profiles, setProfiles] = useState<BankProfile[] | null>(null);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardStartStep1, setWizardStartStep1] = useState(false);
+  const [banks, setBanks] = useState<SupportedBank[] | null>(null);
+  const [bankKey, setBankKey] = useState("");
+  const [resolvingBank, setResolvingBank] = useState(false);
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [disclaimer, setDisclaimer] = useState<DisclaimerContent | null>(null);
   const [disclaimerBusy, setDisclaimerBusy] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
   const wasRunning = useRef(false);
 
-  const step1Done = !!profileId && (profiles?.length ?? 0) > 0;
+  const selectedBank = banks?.find((b) => b.id === bankKey) || null;
+  const step1Done = !!bankKey && !!profileId && !resolvingBank;
   const step2Done = queue.length > 0;
   const step3Active = step1Done && step2Done;
 
   const canUpload =
-    !!profileId &&
+    step1Done &&
     queue.length > 0 &&
     !running &&
     queue.some((q) => q.status === "pending" || q.status === "failed");
 
-  const refreshProfiles = useCallback(async () => {
-    const list = await api.bankProfiles.list();
-    setProfiles(list);
-    if (list.length) {
-      setProfileId(
-        profileId && list.some((p) => String(p.id) === profileId)
-          ? profileId
-          : String(list[0].id)
-      );
-      setWizardOpen(false);
-    } else {
-      setProfileId("");
-      setWizardStartStep1(false);
-      setWizardOpen(true);
-    }
+  const loadBanks = useCallback(async () => {
+    const res = await api.bankProfiles.supportedBanks();
+    const list = res.banks || [];
+    setBanks(list);
     return list;
-  }, [profileId, setProfileId]);
+  }, []);
 
   useEffect(() => {
-    refreshProfiles().catch((e) => setError(e.message));
+    loadBanks().catch((e: unknown) =>
+      setError(e instanceof Error ? e.message : "Could not load banks")
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
   }, []);
+
+  async function onBankChange(nextKey: string) {
+    setBankKey(nextKey);
+    setError(null);
+    setProfileId("");
+    if (!nextKey || !banks) return;
+
+    const bank = banks.find((b) => b.id === nextKey);
+    if (!bank) return;
+
+    setResolvingBank(true);
+    try {
+      const id = await ensureBankProfileId(bank);
+      setProfileId(String(id));
+    } catch (e: unknown) {
+      setBankKey("");
+      setProfileId("");
+      setError(e instanceof Error ? e.message : "Could not prepare bank for import");
+    } finally {
+      setResolvingBank(false);
+    }
+  }
 
   // Success modal when a processing run finishes with at least one success
   useEffect(() => {
@@ -173,12 +203,31 @@ export default function UploadPage() {
       setError("Read-only mode — uploads are locked until you enter an unlock key.");
       return;
     }
-    if (!profiles?.length) {
-      setWizardStartStep1(false);
-      setWizardOpen(true);
+    if (!selectedBank) {
+      setError("Select your bank first.");
       return;
     }
-    if (!canUpload) return;
+    if (
+      !queue.length ||
+      !queue.some((q) => q.status === "pending" || q.status === "failed")
+    ) {
+      return;
+    }
+
+    let pid = profileId;
+    if (!pid) {
+      setResolvingBank(true);
+      try {
+        pid = String(await ensureBankProfileId(selectedBank));
+        setProfileId(pid);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Could not prepare bank for import");
+        return;
+      } finally {
+        setResolvingBank(false);
+      }
+    }
+
     setDisclaimerBusy(true);
     setError(null);
     try {
@@ -204,7 +253,12 @@ export default function UploadPage() {
         user_agent: typeof navigator !== "undefined" ? navigator.userAgent : undefined,
       });
       setDisclaimerOpen(false);
-      void processQueue(profileId);
+      let pid = profileId;
+      if (!pid && selectedBank) {
+        pid = String(await ensureBankProfileId(selectedBank));
+        setProfileId(pid);
+      }
+      void processQueue(pid);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not record acceptance");
     } finally {
@@ -212,8 +266,8 @@ export default function UploadPage() {
     }
   }
 
-  if (profiles === null && !error) {
-    return <p className="text-sm text-muted-foreground">Checking bank profiles…</p>;
+  if (banks === null && !error) {
+    return <p className="text-sm text-muted-foreground">Loading banks…</p>;
   }
 
   return (
@@ -225,7 +279,7 @@ export default function UploadPage() {
           </p>
           <h1 className="page-title">Upload statements</h1>
           <p className="page-subtitle max-w-xl">
-            Three easy steps. We guide you — bank profile, files, then process.
+            Three easy steps — pick your bank, add files, then process.
           </p>
         </div>
         <Button type="button" variant="outline" onClick={() => router.push("/")}>
@@ -267,25 +321,6 @@ export default function UploadPage() {
         />
       </div>
 
-      {profiles && profiles.length === 0 && (
-        <div className="rounded-2xl border-2 border-[hsl(var(--neon-amber)/0.5)] bg-[hsl(var(--neon-amber)/0.08)] px-5 py-4">
-          <p className="font-medium">Bank profile required first</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Pick a calibrated bank and name the profile — then you can upload.
-          </p>
-          <Button
-            size="sm"
-            className="mt-3"
-            onClick={() => {
-              setWizardStartStep1(true);
-              setWizardOpen(true);
-            }}
-          >
-            Set up bank profile
-          </Button>
-        </div>
-      )}
-
       {/* ── Step 1 ── */}
       <section
         className={cn(
@@ -297,40 +332,38 @@ export default function UploadPage() {
       >
         <StepHeader
           n={1}
-          title="Select bank profile"
-          subtitle="Which bank’s statements are you importing?"
+          title="Select your bank"
+          subtitle="Which bank’s statements are you importing? We only list banks we already know how to read."
           icon={<Building2 className="h-5 w-5" />}
           done={step1Done}
           accent="cyan"
         />
         <div className="mt-4 space-y-2">
-          <Label htmlFor="bank-profile">Bank profile</Label>
+          <Label htmlFor="bank-select">Select your bank</Label>
           <Select
-            id="bank-profile"
-            value={profileId}
-            onChange={(e) => setProfileId(e.target.value)}
-            disabled={!profiles?.length || running}
+            id="bank-select"
+            value={bankKey}
+            onChange={(e) => void onBankChange(e.target.value)}
+            disabled={!banks?.length || running || resolvingBank}
             className="h-11"
           >
-            <option value="">Select your bank profile…</option>
-            {profiles?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.bank_type})
+            <option value="">
+              {banks?.length ? "Select your bank…" : "No supported banks available"}
+            </option>
+            {banks?.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.label}
               </option>
             ))}
           </Select>
-          {profiles && profiles.length > 0 && (
-            <button
-              type="button"
-              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-              disabled={running}
-              onClick={() => {
-                setWizardStartStep1(true);
-                setWizardOpen(true);
-              }}
-            >
-              Set up another bank profile
-            </button>
+          {resolvingBank && (
+            <p className="text-xs text-muted-foreground">Preparing bank reader…</p>
+          )}
+          {selectedBank && !resolvingBank && (
+            <p className="text-xs text-muted-foreground">
+              {selectedBank.description}
+              {selectedBank.formats ? ` · ${selectedBank.formats}` : ""}
+            </p>
           )}
         </div>
       </section>
@@ -350,7 +383,8 @@ export default function UploadPage() {
         className={cn(
           "upload-step rounded-2xl border-2 p-5 transition-all",
           !step1Done && "pointer-events-none opacity-45",
-          step1Done && !step2Done &&
+          step1Done &&
+            !step2Done &&
             "border-[hsl(var(--neon-violet)/0.65)] bg-card shadow-[0_0_28px_hsl(var(--neon-violet)/0.12)]",
           step2Done && "border-[hsl(var(--neon-violet)/0.45)] bg-[hsl(var(--neon-violet)/0.06)]"
         )}
@@ -515,7 +549,7 @@ export default function UploadPage() {
           <Button
             type="button"
             className="h-11 min-w-[12rem] gap-2 border-2 border-[hsl(var(--neon-lime)/0.5)] bg-[hsl(var(--neon-lime)/0.15)] text-foreground shadow-[0_0_18px_hsl(var(--neon-lime)/0.2)] hover:bg-[hsl(var(--neon-lime)/0.25)]"
-            disabled={readOnly || !canUpload || !profiles?.length || disclaimerBusy}
+            disabled={readOnly || !canUpload || resolvingBank || disclaimerBusy}
             onClick={() => void onProcess()}
           >
             <Sparkles className="h-4 w-4" />
@@ -531,17 +565,6 @@ export default function UploadPage() {
           </Button>
         </div>
       </section>
-
-      <BankProfileWizard
-        key={wizardStartStep1 ? "step1" : "gate"}
-        open={wizardOpen}
-        startAtStep1={wizardStartStep1}
-        goDashboardOnSave={!profiles?.length}
-        onClose={() => setWizardOpen(false)}
-        onSaved={() => {
-          refreshProfiles().catch(() => undefined);
-        }}
-      />
 
       <UploadDisclaimerModal
         open={disclaimerOpen}

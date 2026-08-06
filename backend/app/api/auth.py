@@ -212,15 +212,15 @@ def login(
 
 @router.post("/guest", response_model=AuthTokenOut)
 def guest_login():
-    """Enter without an account. Nothing is saved — write APIs are blocked."""
+    """Enter without an account. Full product access for testing (local DB writes allowed)."""
     token = issue_guest_token()
     return AuthTokenOut(
         token=token,
         username=GUEST_USERNAME,
         user_id=0,
         message=(
-            "Browsing as Guest. Nothing you do here is saved. "
-            "Create an account when you want to keep your data."
+            "Guest session — full app access. Data is stored locally on this device. "
+            "Create an account when you want a locked private login."
         ),
         is_guest=True,
     )
@@ -236,7 +236,9 @@ def logout(
         return {"message": "Logged out."}
     if is_guest_token(token):
         revoke_guest_token(token)
-        return {"message": "Guest session ended. Nothing was saved."}
+        return {
+            "message": "Guest session ended. Local data created during the session stays on this device."
+        }
     th = hash_token(token)
     sess = db.query(AuthSession).filter(AuthSession.token_hash == th).first()
     if sess:

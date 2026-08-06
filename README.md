@@ -22,9 +22,9 @@ When a chat or session drops, **continue from these files** — they are the sou
 
 ### Current release
 
-**v1.3.0** portable Windows EXE — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) for shipped features and roadmap.
+**v1.4.0** portable Windows EXE — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) for shipped features and roadmap.
 
-### Next phase (after v1.3.0)
+### Next phase (after v1.4.0)
 
 1. **Capture Discovery Personal** multi-statement data  
 2. **Calibrate Reporting** against that data  

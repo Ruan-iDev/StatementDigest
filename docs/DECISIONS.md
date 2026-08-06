@@ -1,6 +1,6 @@
 # Decisions log
 
-**Last updated:** 2026-08-04 · v1.3.0  
+**Last updated:** 2026-08-06 · v1.4.0  
 
 Record **agreed** product/tech decisions so we don’t re-debate after session drops.  
 Format: date · decision · why · status.
@@ -24,7 +24,10 @@ Format: date · decision · why · status.
 | 2026-07-31 | PDF export: portrait **and** landscape | Accountant sharing | Agreed |
 | 2026-07-31 | Living docs in `docs/` + root `devlog.md` | Resume after dropped sessions | Agreed |
 | 2026-07-31 | **Password**: any non-empty; strength meter advisory only | Lower friction | Agreed |
-| 2026-07-31 | **Guest login**: nothing persisted for guest | Try-before-commit | Agreed |
+| 2026-07-31 | **Guest login**: no app account required | Try without registering | Agreed |
+| 2026-08-06 | **Guest = full product** (bank profiles, import, ledgers, reports); local SQLite writes allowed; no account password | Users must prove *their* bank works before subscribe; free account still for locked private login | Agreed |
+| 2026-08-06 | **No user-facing bank profiles** — Upload Step 1 is **Select your bank** (supported banks only); Settings bank-profile tile removed; backend still auto-creates internal bank profile for import routing | Banks are fixed calibrated options; extra naming step was friction | Agreed |
+| 2026-08-06 | **Bank dropdown = brand only** (FNB, Capitec, Discovery, Nedbank); each brand has multiple backend calibrated **layouts** tried on import | Users pick bank; we absorb product/language variants (e.g. FNB Gold Business + Fusion AF personal) | Agreed |
 | 2026-07-31 | **Parser islands**: one module per bank; routing only in `base`/`detect` | Prevent cross-bank taint | Agreed |
 | 2026-07-31 | **Discovery Personal** locked — 226 txs human 100% accurate | Production trust | Agreed |
 | 2026-07-31 | **FNB Gold Business** locked — 1000+ txs human 100% accurate | Production trust | Agreed |
