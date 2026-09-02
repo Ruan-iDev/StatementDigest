@@ -7,7 +7,7 @@ Hours are **focused development time** for that calendar day (design + build + d
 |--------|------:|
 | **Total hours (all days)** | **~40+** (estimate across multi-session desktop product work) |
 | **Days logged** | 2+ |
-| **Last updated** | 2026-08-04 · **v1.3.0** |
+| **Last updated** | 2026-09-02 · **v2.1.0** |
 
 ---
 
@@ -21,6 +21,63 @@ Hours are **focused development time** for that calendar day (design + build + d
 ---
 
 ## Log
+
+### 2026-09-02
+
+**Hours:** in progress  
+**Who:** Solo  
+**Branch:** `feature/practice-module`  
+**Shipped:** **v2.1.0** `LedgerFlow-2.1.0-Portable.exe`
+
+#### Products library
+- Work Flow catalogue named **Products** (not Stock) so goods, labour, and other repeating lines fit
+- Fields: name, description, category, supplier stock code, cost, markup %, retail
+- Type-to-pick on quote/invoice item lines fills description + retail; cost stays on the card
+- Markup % bidirectional; categories typed/grouped with typeahead
+
+#### Quotes / print
+- Duplicate quote; client-file Duplicate / Print preview / Process to invoice
+- In-app preview (288 DPI); Save PDF + Print; preview closes after print
+- Quote number: rounded 50% yellow chip
+
+#### Ledger Flow
+- Ledger list grouped Income → Expense → Transfer
+- Bank Zero Check Account sample island
+
+#### Desktop
+- v2.1.0 portable EXE; crash logs from 2.0.1 still apply
+
+---
+
+### 2026-08-24
+
+**Hours:** in progress  
+**Who:** Solo  
+**Branch:** `feature/practice-module`
+
+#### Local ports
+- Reserved **UI :3470** and **API :8470** so LedgerFlow does not sit on Next `:3000` or uvicorn `:8000`
+
+---
+
+### 2026-08-17
+
+**Hours:** setup session  
+**Who:** Solo  
+**Branch:** `feature/practice-module` (do not treat as a shipping EXE)
+
+#### Module architecture
+- Modular monolith: core stays statement digest; bolt-ons live in `backend/app/modules` + `frontend/modules`
+- Registry mounts Practice without dumping tables into `app.models` or routes into `app.api`
+- One EXE / one SQLite / one login — updates still ship core + modules together
+
+#### Practice scaffold
+- Clients + suppliers libraries
+- Projects library + project file (info sheet + paper trail + Add note)
+- Quotes / invoices placeholders
+- Docs: `docs/MODULES.md` is the map
+
+---
 
 ### 2026-08-04
 

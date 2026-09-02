@@ -22,6 +22,7 @@ This document explains how to **keep that accuracy from being tainted** as we ke
 | **FNB** brand (Gold Business EN + Fusion AF personal) | `fnb_pdf.py` | ✅ Multi-layout island | Gold Business **1000+ · 100%**; Fusion AF edition-1 sample |
 | **Capitec Business** (PDF table) | `capitec_pdf.py` | ✅ Edition-1 locked | Sample sealed; **bulk import TBD** |
 | **Nedbank Personal** (PDF text) | `nedbank_pdf.py` | ✅ Edition-1 locked | Sample sealed; **bulk import TBD** |
+| **Bank Zero** Check Account | `bank_zero_pdf.py` | ✅ Edition-1 sample | June + July 2026 samples |
 | Other (Absa, Standard, etc.) | new modules only | Not started | — |
 
 ### Planned bulk accuracy tests (do soon)
@@ -46,7 +47,8 @@ Until bulk tests pass, treat Capitec / Nedbank as **locked against cross-bank ta
 `looks_like_discovery_text` / `parse_discovery_pdf_text` → Discovery only.  
 `looks_like_fnb_text` / `parse_fnb_pdf_text` → FNB only.  
 `looks_like_capitec_text` / `parse_capitec_pdf_text` → Capitec only.  
-`looks_like_nedbank_text` / `parse_nedbank_pdf_text` → Nedbank only.
+`looks_like_nedbank_text` / `parse_nedbank_pdf_text` → Nedbank only.  
+`looks_like_bank_zero_text` / `parse_bank_zero_pdf_text` → Bank Zero only (before Nedbank — "Nedbank" can appear as a Bank Zero counterparty).
 
 If a change would touch a **locked** module, stop and ask: *Is this a proven regression for that same bank, with tests?* If not → leave it alone.
 

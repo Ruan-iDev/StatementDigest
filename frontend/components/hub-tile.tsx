@@ -37,6 +37,8 @@ type HubTileBase = {
   selected?: boolean;
   /** Draw attention (e.g. unallocated transactions waiting) */
   pulse?: boolean;
+  /** Tighter tile — Practice hub */
+  compact?: boolean;
 };
 
 type HubTileLinkProps = HubTileBase & {
@@ -59,13 +61,14 @@ function TileInner({
   badge,
   selected,
   pulse,
+  compact,
   showArrow,
 }: HubTileBase & { showArrow: boolean }) {
   return (
     <>
       <div className="flex items-start justify-between gap-3">
-        <div className={cn("hub-tile-icon", pulse && "hub-tile-icon-pulse")}>
-          <Icon className="h-7 w-7" strokeWidth={1.75} />
+        <div className={cn("hub-tile-icon", compact && "hub-tile-icon-compact", pulse && "hub-tile-icon-pulse")}>
+          <Icon className={compact ? "h-5 w-5" : "h-7 w-7"} strokeWidth={1.75} />
         </div>
         <div className="flex items-center gap-1.5">
           {selected && (
@@ -94,12 +97,12 @@ function TileInner({
       </div>
       <div className="mt-auto space-y-1.5">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+          <h2 className={cn("font-semibold tracking-tight", compact ? "text-base" : "text-lg")}>{title}</h2>
           {showArrow && (
             <ArrowUpRight className="h-4 w-4 opacity-40 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:opacity-100" />
           )}
         </div>
-        <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+        <p className={cn("leading-relaxed text-muted-foreground", compact ? "text-xs" : "text-sm")}>{description}</p>
         {pulse && (
           <p className="text-xs font-medium text-[hsl(var(--neon-magenta))]">
             Needs attention — unallocated items waiting
@@ -111,9 +114,10 @@ function TileInner({
 }
 
 export function HubTile(props: HubTileProps) {
-  const { title, description, icon, accent, badge, className, selected, pulse } = props;
+  const { title, description, icon, accent, badge, className, selected, pulse, compact } = props;
   const shell = cn(
-    "hub-tile group min-h-[180px] text-left",
+    "hub-tile group text-left",
+    compact ? "min-h-[112px] p-4" : "min-h-[180px]",
     ACCENT_CLASS[accent],
     selected && "ring-2 ring-offset-2 ring-offset-background",
     selected && accent === "lime" && "ring-[hsl(var(--neon-lime)/0.7)]",
@@ -136,6 +140,7 @@ export function HubTile(props: HubTileProps) {
           badge={badge}
           selected={selected}
           pulse={pulse}
+          compact={compact}
           showArrow={false}
         />
       </button>
@@ -152,6 +157,7 @@ export function HubTile(props: HubTileProps) {
         badge={badge}
         selected={selected}
         pulse={pulse}
+        compact={compact}
         showArrow
       />
     </Link>

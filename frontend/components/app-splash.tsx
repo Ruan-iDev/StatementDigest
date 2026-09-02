@@ -61,15 +61,17 @@ export function AppSplash({ exiting = false, className }: Props) {
           src="/splash-logo.svg"
           alt="LedgerFlow"
           className={cn(
-            "h-auto w-[min(220px,42vw)] transition-all duration-[1400ms] ease-out",
+            "h-auto w-[min(220px,42vw)] transition-all ease-out",
             entered && !exiting ? "scale-100 opacity-100" : "scale-95 opacity-0"
           )}
+          style={{ transitionDuration: "1.4s" }}
         />
         <p
           className={cn(
-            "mt-7 text-[clamp(1.35rem,2.4vw,1.75rem)] font-medium tracking-wide transition-opacity duration-[1200ms] delay-300",
+            "mt-7 text-[clamp(1.35rem,2.4vw,1.75rem)] font-medium tracking-wide transition-opacity delay-300",
             entered && !exiting ? "opacity-100" : "opacity-0"
           )}
+          style={{ transitionDuration: "1.2s" }}
         >
           Welcome
         </p>

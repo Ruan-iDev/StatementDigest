@@ -43,8 +43,8 @@ const CARDS: GuideCard[] = [
   },
   {
     n: 2,
-    title: "Dashboard",
-    body: "Your home. Four clear hubs: Upload, Transactions, Reporting, and Settings.",
+    title: "Two modules",
+    body: "Ledger Flow is the books — upload, transactions, reporting, settings. Work Flow is clients, products, quotes, invoices, and projects.",
     icon: <LayoutDashboard className="h-5 w-5" />,
     accent: "violet",
   },

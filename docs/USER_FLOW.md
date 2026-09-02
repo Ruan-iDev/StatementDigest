@@ -9,7 +9,7 @@ This is the **target** product flow. Gaps vs current code are marked **[NOT BUIL
 
 ## A. Open the app
 
-1. User opens the app (today: browser at `http://localhost:3000`; future: optional desktop shell).
+1. User opens the app (today: browser at `http://localhost:3470`; future: optional desktop shell).
 2. **[NOT BUILT]** “Login” — for now there is **no account system**; local app is open.  
    *Decision pending: treat “login” as “app launch” until multi-user exists.*
 3. User lands on **Dashboard** with four hubs:

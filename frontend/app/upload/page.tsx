@@ -284,7 +284,7 @@ export default function UploadPage() {
         </div>
         <Button type="button" variant="outline" onClick={() => router.push("/")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Dashboard
+          Ledger Flow
         </Button>
       </div>
 

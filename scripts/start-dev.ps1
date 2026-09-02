@@ -18,8 +18,9 @@ $Frontend = Join-Path $Root "frontend"
 $VenvPython = Join-Path $Backend ".venv\Scripts\python.exe"
 $StartBackend = Join-Path $PSScriptRoot "start-backend.ps1"
 $StartFrontend = Join-Path $PSScriptRoot "start-frontend.ps1"
-$ApiUrl = "http://127.0.0.1:8000"
-$UiUrl = "http://localhost:3000"
+# Reserved for this app — not Next 3000 / uvicorn 8000.
+$ApiUrl = "http://127.0.0.1:8470"
+$UiUrl = "http://localhost:3470"
 $HealthUrl = "$ApiUrl/api/health"
 
 function Test-Url([string]$Url, [int]$TimeoutSec = 2) {

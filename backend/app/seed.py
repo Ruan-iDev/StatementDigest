@@ -12,6 +12,7 @@ STARTER_LEDGERS: list[dict] = [
     {"name": "Interest Received", "type": LedgerType.INCOME.value, "sort_order": 20},
     {"name": "Dividends", "type": LedgerType.INCOME.value, "sort_order": 30},
     {"name": "Rental Income", "type": LedgerType.INCOME.value, "sort_order": 40},
+    {"name": "Sales / Invoice Income", "type": LedgerType.INCOME.value, "sort_order": 45},
     {"name": "Other Income", "type": LedgerType.INCOME.value, "sort_order": 50},
     {"name": "Transfers In (non-taxable)", "type": LedgerType.TRANSFER.value, "sort_order": 60},
     # Expenses

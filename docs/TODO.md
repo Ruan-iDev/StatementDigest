@@ -1,6 +1,6 @@
 # TODO — living backlog
 
-**Last updated:** 2026-08-04 · **App version: 1.3.0**  
+**Last updated:** 2026-09-02 · **App version: 2.1.0** · portable EXE `LedgerFlow-2.1.0-Portable.exe`  
 **How to use:** Move items between sections as work finishes. Add new items from product conversations. After any session, update **Status snapshot**.  
 **Release notes:** [RELEASE_NOTES.md](./RELEASE_NOTES.md)
 
@@ -10,8 +10,8 @@
 
 | Area | Status |
 |------|--------|
-| Local app run (FE + BE) | Working (`run.py` default **no auto-reload** — set `LEDGERFLOW_RELOAD=1` for watch mode) |
-| Portable EXE | **v1.3.0** `LedgerFlow-1.3.0-Portable.exe` |
+| Local app run (FE + BE) | Working on **UI :3470 / API :8470** (`run.py` default **no auto-reload** — set `LEDGERFLOW_RELOAD=1` for watch mode) |
+| Portable EXE | **v2.1.0** `LedgerFlow-2.1.0-Portable.exe` |
 | Soft grey + neon hub UI | Done |
 | Auth (login / guest / first-time setup) | Done v1.3 |
 | Returning-user greet + simple login | Done v1.3 |
@@ -23,7 +23,7 @@
 | Multi user-profile workspaces | Done v1.3 (extra clients: workspace username + password on create + switch gate) |
 | Upload 3-step + success modal + pulse | Done v1.3 |
 | Transactions dual tabs + Assign to Ledger | Done v1.3 |
-| Parsers (4 locked islands) | **Discovery 226 · FNB 1000+ · Capitec sample · Nedbank sample** |
+| Parsers (5 islands) | **Discovery 226 · FNB 1000+ · Capitec sample · Nedbank sample · Bank Zero sample** |
 | Reporting hub + monthly chart | Done — **calibrate after Discovery data** |
 | P&L / PDF letterhead | Partial — polish after real data |
 | Product docs in `docs/` | Living — refreshed 2026-08-04 |
@@ -47,6 +47,32 @@
 - [ ] **Bulk Capitec Business** multi-statement import accuracy pass
 - [ ] **Bulk Nedbank Personal** multi-statement import accuracy pass
 - [ ] Optional: freeze redacted samples under `samples/` for CI
+
+### 4 — Practice module (separate branch — does not block EXE)
+Work only on **`feature/practice-module`**. See [MODULES.md](./MODULES.md).
+- [x] Module registry + git branch
+- [x] Settings → Modules On/Off (quotes, invoices, projects)
+- [x] Clients / suppliers libraries
+- [x] Projects library + project file + Add note / quote / invoice / expense
+- [x] Quotes + invoices (first draft) + invoice from quote
+- [x] Project statement (notes, quotes, invoices, running costs)
+- [x] Theme packs + Settings → Appearance
+- [x] Quote/invoice editor + line items + company/client details
+- [x] Quote/invoice PDF print
+- [x] Staff library + photo (biometrics later) + wages on project trail + staff statement
+- [x] Products library (name, description, supplier stock code, cost, markup %, retail, category) + pick onto quote/invoice lines
+- [x] Quote print preview: Save PDF + Print, 288 DPI preview, close after print
+- [x] Ledger Account Management grouped Income → Expense → Transfer
+- [x] Bank Zero Check Account sample island
+- [x] Per-day wages on the project trail (days with decimals × daily rate, extras + deductions with description + amount, HR notes)
+- [x] Wage payments snapshot the rate at save time — later staff-card increases do not rewrite past project wages
+- [x] Remove paper-trail lines (wages, expenses, notes, meetings, payments) so a wrong wage can be dropped and loaded again
+- [ ] **Payslips** from staff wages (PDF, weekly/monthly, bank details on the staff card) — include days, rate, extras, and deductions
+- [ ] **HR file / report from wage notes** — each wage payment stores a performance note (good / poor work, unique events). Pull these onto a staff HR file later
+- [ ] **HR wage-increase report** — pull dated rate history (start / increase / decrease) to PDF
+- [ ] Staff statement PDF (same preview window as supplier statements)
+- [ ] Attach files to a project
+- [ ] Merge to `Develop---EXE-Build` only when a slice is shippable
 
 ---
 

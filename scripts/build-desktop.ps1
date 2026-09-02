@@ -93,14 +93,23 @@ if (-not (Test-Path (Join-Path $Frontend "node_modules"))) {
 if (-not $SkipApi) {
     Write-Step "Building API sidecar (PyInstaller)"
     $Spec = Join-Path $Backend "packaging\ledgerflow-api.spec"
-    $DistDir = Join-Path $Backend "packaging\dist"
-    $WorkDir = Join-Path $Backend "packaging\build"
+    # Build outside OneDrive — file locks there abort COLLECT with Access denied.
+    $PackTemp = Join-Path $env:TEMP "ledgerflow-packaging"
+    $DistDir = Join-Path $PackTemp "dist"
+    $WorkDir = Join-Path $PackTemp "build"
+    if (Test-Path $PackTemp) {
+        try {
+            Remove-Item -Recurse -Force $PackTemp -ErrorAction Stop
+        } catch {
+            Write-Host "Could not wipe temp packaging dir. Continuing." -ForegroundColor Yellow
+        }
+    }
     New-Item -ItemType Directory -Force -Path $DistDir, $WorkDir | Out-Null
 
-    & $VenvPyInstaller --noconfirm --clean `
-        --distpath $DistDir `
-        --workpath $WorkDir `
-        $Spec
+    & $VenvPyInstaller --noconfirm --distpath $DistDir --workpath $WorkDir $Spec
+    if ($LASTEXITCODE -ne 0) {
+        throw "PyInstaller failed with exit code $LASTEXITCODE"
+    }
 
     $BuiltApiDir = Join-Path $DistDir "ledgerflow-api"
     if (-not (Test-Path (Join-Path $BuiltApiDir "ledgerflow-api.exe"))) {
@@ -120,7 +129,7 @@ if (-not $SkipUi) {
     Write-Step "Building static UI (Next.js export) v$AppVersion"
     Push-Location $Frontend
     $env:LEDGERFLOW_DESKTOP = "1"
-    # Same-origin via Electron UI server proxy (/api -> 127.0.0.1:8000) — avoids cross-port fetch failures
+    # Same-origin via Electron UI server proxy (/api -> 127.0.0.1:8470) — avoids cross-port fetch failures
     $env:NEXT_PUBLIC_API_URL = "/api"
     $env:NEXT_PUBLIC_APP_VERSION = $AppVersion
     if ($UpdateManifestUrl) {
@@ -129,6 +138,10 @@ if (-not $SkipUi) {
         Remove-Item Env:NEXT_PUBLIC_UPDATE_MANIFEST_URL -ErrorAction SilentlyContinue
     }
     npm run build
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw "Next.js build failed with exit code $LASTEXITCODE"
+    }
     Remove-Item Env:LEDGERFLOW_DESKTOP -ErrorAction SilentlyContinue
     Remove-Item Env:NEXT_PUBLIC_APP_VERSION -ErrorAction SilentlyContinue
     Remove-Item Env:NEXT_PUBLIC_UPDATE_MANIFEST_URL -ErrorAction SilentlyContinue
@@ -162,6 +175,10 @@ if (-not $SkipElectron) {
 
     Write-Step "Packaging portable .exe (electron-builder)"
     npm run dist
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw "electron-builder failed with exit code $LASTEXITCODE"
+    }
     Pop-Location
 
     $Dist = Join-Path $Desktop "dist"

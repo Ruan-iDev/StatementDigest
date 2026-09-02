@@ -6,8 +6,8 @@
 
 ```
 LedgerFlow-*-Portable.exe   (Electron shell)
-   ├── starts  ledgerflow-api.exe   → http://127.0.0.1:8000
-   └── serves  static UI            → http://127.0.0.1:3000
+   ├── starts  ledgerflow-api.exe   → http://127.0.0.1:8470
+   └── serves  static UI            → http://127.0.0.1:3470
 Data (SQLite + uploads) →  Documents\LedgerFlow\Data  (on the tester’s PC)
 ```
 
@@ -23,7 +23,8 @@ Tester does **not** need these.
 
 ## Version
 
-Edit root **`VERSION`** (e.g. `1.0.1`) before building. Footer + Settings + portable filename use that value.  
+Edit root **`VERSION`** (currently `2.1.0`) before building. Footer + Settings + portable filename use that value.  
+Tester file: `desktop/dist/LedgerFlow-2.1.0-Portable.exe`  
 In-app updates: see [UPDATES.md](./UPDATES.md).
 
 ## One-command build
@@ -81,11 +82,28 @@ npm run dev
 
 Desktop packaging is a **separate road** (`desktop/` + `scripts/build-desktop.ps1`). It does not replace local web development.
 
+## Crash logs (portable EXE)
+
+From **v2.0.1** the app writes files here (same machine as the tester):
+
+`Documents\LedgerFlow\logs\`
+
+| File | What it is |
+|------|------------|
+| `desktop.log` | Electron boot: ports, PIDs it killed, API spawn, UI server, crashes |
+| `api.log` | FastAPI / uvicorn stdout + Python exceptions |
+| `last-error.txt` | Last fatal line (quick glance) |
+
+If the window closes, that folder opens automatically. Send those three files with a bug report.
+
+A very common “crash” is **ports 3470 / 8470 already in use** (`npm run dev` or a leftover EXE). The log will say which PID held the port.
+
 ## Troubleshooting
 
 | Symptom | Check |
 |---------|--------|
-| “API did not become healthy” | Port **8000** free? Close other `npm run dev` / API windows |
+| Window opens then closes | `Documents\LedgerFlow\logs\desktop.log` — look for `EADDRINUSE`, `API exit`, `failed to start` |
+| “API did not become healthy” | Port **8470** free? Close other `npm run dev` / API windows |
 | Blank window | Rebuild UI with `LEDGERFLOW_DESKTOP=1`; ensure `desktop/resources/ui/index.html` exists |
 | Antivirus delete | Common for unsigned portable + PyInstaller — add exception or sign later |
 | PyInstaller import errors | Re-run with a clean venv; extend `hiddenimports` in `backend/packaging/ledgerflow-api.spec` |

@@ -1,6 +1,6 @@
 # File tree — what does what
 
-**Last updated:** 2026-07-31 (end of day)  
+**Last updated:** 2026-09-02 · app v2.1.0 (reserved local ports 3470 / 8470)  
 
 Only project-owned paths (not `node_modules` / `.venv` contents).
 
@@ -24,17 +24,20 @@ App - LedgerFlow/
 │   └── DISCLAIMER_AND_LIABILITY.md
 │
 ├── backend/                  # FastAPI API + parsing + DB access
-│   ├── run.py                # uvicorn :8000 (reload via LEDGERFLOW_RELOAD=1)
+│   ├── run.py                # uvicorn :8470 (reload via LEDGERFLOW_RELOAD=1)
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   ├── smoke_test.py
 │   ├── tests/
 │   │   └── test_parser_regression.py  # Golden locked-bank contracts
 │   └── app/
-│       ├── main.py           # App factory, CORS, routers, /api/health
+│       ├── main.py           # App factory, CORS, core routers, mount_modules()
 │       ├── config.py         # Paths, settings
-│       ├── database.py       # SQLAlchemy engine / session
-│       ├── models.py         # Profiles, BankProfile, Ledger, Transaction, …
+│       ├── database.py       # SQLAlchemy engine / session (+ module model import)
+│       ├── models.py         # Core only: Profiles, BankProfile, Ledger, Transaction, …
+│       ├── modules/          # Bolt-on products (see docs/MODULES.md)
+│       │   ├── registry.py   # Discover, import models, mount routers
+│       │   └── practice/     # Clients, suppliers, staff, products, project files, paper trail
 │       ├── schemas.py
 │       ├── seed.py           # Starter ledgers (incl. Bank Charges & Fees)
 │       ├── security.py / guest_sessions.py / deps.py
@@ -78,7 +81,11 @@ App - LedgerFlow/
 │   │   ├── ledgers/
 │   │   ├── rules/
 │   │   ├── profiles/
-│   │   └── terms/
+│   │   ├── terms/
+│   │   └── practice/         # Thin routes only — UI lives in modules/practice
+│   ├── modules/
+│   │   ├── registry.ts       # Enabled modules → sidebar + dashboard
+│   │   └── practice/         # Practice hub, libraries, project file
 │   ├── components/
 │   │   ├── sidebar.tsx
 │   │   ├── bank-profile-wizard.tsx
@@ -127,13 +134,15 @@ App - LedgerFlow/
 
 ## Ports
 
+Hardcoded for this app so they do not collide with Next `:3000` or uvicorn `:8000`.
+
 | Service | URL |
 |---------|-----|
-| UI | http://localhost:3000 |
-| API | http://127.0.0.1:8000 |
-| API docs | http://127.0.0.1:8000/docs |
+| UI | http://localhost:3470 |
+| API | http://127.0.0.1:8470 |
+| API docs | http://127.0.0.1:8470/docs |
 
-**Never** open `:8000/` expecting the app UI — that is API only.
+**Never** open `:8470/` expecting the app UI — that is API only.
 
 ## Parser islands (do not cross-taint)
 

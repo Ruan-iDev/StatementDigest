@@ -1,6 +1,6 @@
 # Decisions log
 
-**Last updated:** 2026-08-06 · v1.4.0  
+**Last updated:** 2026-08-24 · reserved ports 3470 / 8470  
 
 Record **agreed** product/tech decisions so we don’t re-debate after session drops.  
 Format: date · decision · why · status.
@@ -48,6 +48,19 @@ Format: date · decision · why · status.
 | 2026-08-04 | Returning login: username+password only (no register tabs); register via first-time setup | Less confusion for existing users | Agreed · v1.3 |
 | 2026-08-04 | **Mobile**: Android via **APK** first; iOS is a separate store build (not APK) | APK ≠ all phones | Agreed (direction) |
 | 2026-08-04 | Core product logic stays one backend family; shells wrap it (desktop / mobile) | Avoid two unrelated codebases | Agreed (direction) |
+| 2026-08-17 | **Modular monolith** — bolt-on modules in `app/modules` + `frontend/modules`; one EXE, one SQLite, one login | Grow Practice without rewriting statement digest; updates ship core + modules together | Agreed |
+| 2026-08-17 | Practice work lives on **`feature/practice-module`**; `Develop---EXE-Build` stays EXE-safe until merge | Unfinished billing/CRM must not land in the shipping installer | Agreed |
+| 2026-08-17 | Practice = clients, suppliers, quotes, invoices, **project files** with a dated paper trail — not a sales CRM | Matches “open a job file and add notes/invoices” | Agreed (direction) |
+| 2026-08-17 | Module tables prefixed `practice_`; no Practice columns on core statement/ledger tables | Prevents core schema taint | Agreed |
+| 2026-08-17 | Quotes, Invoices, Projects are **independent** Settings → Modules switches; invoice-from-quote only needs both on | Value-added features; no forced bundle | Agreed |
+| 2026-08-17 | Project +Add = Notes / Quote / Invoice / Expense; expense → core expense ledger; invoice → core income ledger | Running costs and sales stay on the same books | Agreed |
+| 2026-08-17 | Theme packs via `data-theme` + shared CSS tokens; Settings → Appearance; extra packs documented in THEME.md | Whole app follows one look; later themes do not fork modules | Agreed |
+| 2026-08-24 | **Reserved local ports: UI `3470`, API `8470`** (dev + desktop) | Avoid Next `:3000` / uvicorn `:8000` and other default stacks | Agreed |
+| 2026-09-02 | Work Flow **products library** = name, description, supplier stock code, cost, retail. Named Products (not Stock) so labour and other repeating lines fit. No qty-on-hand. Retail copies onto quote/invoice lines; cost stays on the card | People who quote a regular range should not retype every line | Agreed |
+| 2026-09-02 | Product **markup %** is bidirectional (cost+%→retail, cost+retail→%) | Pricing without a calculator | Agreed |
+| 2026-09-02 | Product **category** is free text, no defaults; same name groups; typeahead from existing names | Catalogue without a fixed taxonomy | Agreed |
+| 2026-09-02 | Quote print preview: in-app PNG + Save PDF + Print (no pop-up); Print uses original PDF when possible; preview closes after print | Electron PDF pop-ups were blank | Agreed |
+| 2026-09-02 | Ledger Account Management list grouped Income → Expense → Transfer | Scan by type | Agreed |
 
 ---
 

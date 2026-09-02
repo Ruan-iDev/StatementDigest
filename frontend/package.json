@@ -1,12 +1,12 @@
 {
   "name": "ledgerflow-frontend",
-  "version": "1.4.0",
+  "version": "2.1.0",
 
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3470",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3470",
     "lint": "next lint"
   },
   "dependencies": {

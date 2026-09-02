@@ -43,11 +43,15 @@ def init_db() -> None:
     """Create tables, migrate schema, seed starter data."""
     # Import models so metadata is populated
     from app import models  # noqa: F401
+    from app.modules.registry import import_module_models, migrate_modules
     from app.migrate_schema import migrate_schema
     from app.seed import seed_if_empty
 
+    import_module_models()
+
     Base.metadata.create_all(bind=engine)
     migrate_schema(engine)
+    migrate_modules(engine)
     db = SessionLocal()
     try:
         seed_if_empty(db)

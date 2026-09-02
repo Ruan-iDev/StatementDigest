@@ -1,9 +1,9 @@
 /**
- * API client for local LedgerFlow backend (default http://127.0.0.1:8000).
+ * API client for local LedgerFlow backend (default http://127.0.0.1:8470).
  */
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000/api";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8470/api";
 
 const PROFILE_STORAGE_KEY = "ledgerflow-active-profile-id";
 const AUTH_TOKEN_KEY = "ledgerflow-auth-token";
@@ -87,7 +87,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ApiError(
       0,
-      "Could not reach the API (Failed to fetch). Is the backend running on http://127.0.0.1:8000?"
+      "Could not reach the API (Failed to fetch). Is the backend running on http://127.0.0.1:8470?"
     );
   }
   if (!res.ok) {
@@ -118,6 +118,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Shared fetch helper for bolt-on modules. Do not duplicate auth/profile headers. */
+export { request as apiRequest };
+
 /**
  * Authenticated binary download (PDFs, etc.).
  * window.open(url) cannot send Authorization headers — always use this for exports.
@@ -136,7 +139,7 @@ async function downloadAuthenticated(
   } catch {
     throw new ApiError(
       0,
-      "Could not reach the API (Failed to fetch). Is the backend running on http://127.0.0.1:8000?"
+      "Could not reach the API (Failed to fetch). Is the backend running on http://127.0.0.1:8470?"
     );
   }
   if (!res.ok) {

@@ -55,6 +55,8 @@ def looks_like_nedbank_text(text: str) -> bool:
     if not t.strip():
         return False
     # Keep out of other islands
+    if "bank zero" in t or "bankzero" in t.replace(" ", ""):
+        return False
     if "capitec" in t and "nedbank" not in t:
         return False
     if "discovery bank" in t or "discovery gold" in t:

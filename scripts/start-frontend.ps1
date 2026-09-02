@@ -17,5 +17,7 @@ if ($Install -or -not (Test-Path "node_modules")) {
 }
 
 $Host.UI.RawUI.WindowTitle = "LedgerFlow UI"
-Write-Host "Starting Next.js on http://localhost:3000 ..."
+# Reserved for this app — not Next's default 3000.
+if (-not $env:NEXT_PUBLIC_API_URL) { $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:8470/api" }
+Write-Host "Starting Next.js on http://localhost:3470 ..."
 npm run dev

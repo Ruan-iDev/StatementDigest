@@ -57,8 +57,8 @@ class Settings(BaseSettings):
     default_fy_start_month: int = 3
     default_currency: str = "ZAR"
     cors_origins: list[str] = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
+        "http://localhost:3470",
+        "http://127.0.0.1:3470",
     ]
     max_upload_mb: int = 25
 

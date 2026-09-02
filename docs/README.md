@@ -14,21 +14,24 @@ If a chat/session drops, start here and continue from `TODO.md` + root `devlog.m
 | [RELEASE_NOTES.md](./RELEASE_NOTES.md) | What shipped per version + future roadmap | Every release / portable build |
 | [UPDATES.md](./UPDATES.md) | Version file + OTA channel (when enabled) | Versioning / update hosting |
 | [DESKTOP_BUILD.md](./DESKTOP_BUILD.md) | How to package the Windows portable EXE | Build pipeline changes |
+| [MODULES.md](./MODULES.md) | How bolt-on modules (Practice) sit on the core | Module architecture or a new module |
+| [THEME.md](./THEME.md) | Theme packs + how to add another | Appearance or a new look |
 | [DECISIONS.md](./DECISIONS.md) | Short log of agreed decisions | After planning agreements |
 | [AIBrainSelfTrain.md](./AIBrainSelfTrain.md) | Dev train / ghost feedback loop | Training feature changes |
 | [DISCLAIMER_AND_LIABILITY.md](./DISCLAIMER_AND_LIABILITY.md) | Upload Accept gate + acceptance audit | Disclaimer / legal UX |
 | [../devlog.md](../devlog.md) | Daily hours + session narrative | End of each work day |
 
-**Last documentation pass:** 2026-08-04 · **shipped app v1.3.0**
+**Last documentation pass:** 2026-09-02 · **shipped app v2.1.0**
 
 ## Quick resume (next session)
 
-1. Read **[RELEASE_NOTES.md](./RELEASE_NOTES.md)** (v1.3.0 shipped)  
+1. Read **[RELEASE_NOTES.md](./RELEASE_NOTES.md)** (v2.1.0 portable EXE)  
 2. Read **Next phase** in [TODO.md](./TODO.md)  
 3. **(1)** Capture Discovery Personal multi-statement data  
 4. **(2)** Calibrate Reporting against real numbers  
 5. **(3)** Later: bulk Capitec + Nedbank accuracy; OTA channel; code signing  
 6. Do **not** edit locked parsers for another bank — [PARSER_STABILITY.md](./PARSER_STABILITY.md)  
+7. Work Flow lives on **`feature/practice-module`** — [MODULES.md](./MODULES.md)  
 
 ## Parser lock snapshot
 
@@ -38,3 +41,4 @@ If a chat/session drops, start here and continue from `TODO.md` + root `devlog.m
 | FNB Gold Business | ✅ Locked | 1000+ · 100% |
 | Capitec Business | ✅ Locked | Sample; bulk TBD |
 | Nedbank Personal | ✅ Locked | Sample; bulk TBD |
+| Bank Zero Check | ✅ Sample island | June + July 2026 samples |

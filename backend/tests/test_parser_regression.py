@@ -154,7 +154,7 @@ def test_supported_banks_are_brand_labels():
 
     banks = list_supported_banks()
     labels = {b["label"] for b in banks}
-    assert labels == {"Discovery", "FNB", "Capitec", "Nedbank"}
+    assert labels == {"Discovery", "FNB", "Capitec", "Nedbank", "Bank Zero"}
     fnb = next(b for b in banks if b["bank_type"] == "FNB")
     assert any(L["id"] == "gold_business_en" for L in fnb["layouts"])
     assert any(L["id"] == "fusion_private_wealth_af" for L in fnb["layouts"])
@@ -265,3 +265,55 @@ def test_capitec_business_fee_not_added_to_amount():
     # Fee Total / VAT not imported as separate lines
     assert not any("fee total" in t.description.lower() for t in txs)
     assert not any("vat total" in t.description.lower() for t in txs)
+
+
+BANK_ZERO_A = SAMPLES / "bank_zero" / "Bank Zero Sample A.pdf"
+BANK_ZERO_B = SAMPLES / "bank_zero" / "Bank Zero Sample B.pdf"
+
+
+@pytest.mark.skipif(not BANK_ZERO_A.exists(), reason="Bank Zero Sample A missing")
+def test_bank_zero_sample_a_signed_amounts_and_admin_fee():
+    from app.services.parsers.bank_zero_pdf import (
+        looks_like_bank_zero_text,
+        parse_bank_zero_pdf_text,
+    )
+    from app.services.parsers.nedbank_pdf import looks_like_nedbank_text
+
+    content = BANK_ZERO_A.read_bytes()
+    import pdfplumber
+    import io
+
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+    assert looks_like_bank_zero_text(text)
+    assert not looks_like_nedbank_text(text)
+
+    txs = parse_bank_zero_pdf_text(content)
+    assert len(txs) == 4
+    assert str(txs[0].date) == "2026-06-03"
+    assert txs[0].amount == Decimal("3196.50")
+    assert "nedbank" in txs[0].description.lower()
+    assert txs[1].amount == Decimal("-200.00")
+    assert txs[1].fee_amount == Decimal("6.50")
+    assert txs[2].amount == Decimal("528.06")
+    assert txs[3].amount == Decimal("657.84")
+    assert "opening" not in " ".join(t.description.lower() for t in txs)
+
+
+@pytest.mark.skipif(not BANK_ZERO_B.exists(), reason="Bank Zero Sample B missing")
+def test_bank_zero_sample_b_large_debit():
+    from app.services.parsers.bank_zero_pdf import parse_bank_zero_pdf_text
+    from app.services.parsers.base import get_preset, parse_statement
+
+    content = BANK_ZERO_B.read_bytes()
+    txs = parse_bank_zero_pdf_text(content)
+    assert len(txs) == 4
+    assert str(txs[0].date) == "2026-07-06"
+    assert txs[0].amount == Decimal("1000.00")
+    assert txs[1].amount == Decimal("-16000.00")
+    assert "integrilex" in txs[1].description.lower()
+    assert txs[2].amount == Decimal("528.06")
+    assert txs[3].amount == Decimal("657.84")
+
+    routed = parse_statement(BANK_ZERO_B, get_preset("Bank Zero"), "Bank Zero Sample B.pdf")
+    assert [t.amount for t in routed] == [t.amount for t in txs]

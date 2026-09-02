@@ -24,6 +24,7 @@ from app.config import ensure_data_dirs, get_settings
 from app.database import SessionLocal, init_db
 from app.guest_sessions import is_guest_token
 from app.models import AuthSession
+from app.modules.registry import mount_modules, modules_public_payload
 from app.security import hash_token
 
 ensure_data_dirs()
@@ -32,7 +33,7 @@ app_settings = get_settings()
 app = FastAPI(
     title="LedgerFlow API",
     description="Local-first personal finance: statements → ledgers → P&L",
-    version="1.4.0",
+    version="2.1.0",
 )
 
 
@@ -158,6 +159,7 @@ app.include_router(imports.router, prefix="/api")
 app.include_router(transactions.router, prefix="/api")
 app.include_router(rules.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
+mount_modules(app)
 
 
 @app.on_event("startup")
@@ -174,12 +176,18 @@ def on_startup() -> None:
         db.close()
 
 
+@app.get("/api/modules")
+def list_modules():
+    """Enabled bolt-on modules shipped with this build."""
+    return {"modules": modules_public_payload()}
+
+
 @app.get("/api/health")
 def health():
     # Keep in sync with repo root VERSION (desktop builds may set LEDGERFLOW_APP_VERSION).
     import os
 
-    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "1.4.0").strip() or "1.4.0"
+    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "2.1.0").strip() or "2.1.0"
 
     return {
         "status": "ok",

@@ -143,6 +143,13 @@ def get_preset(bank_type: str) -> dict[str, Any]:
         cal["bank_family"] = "Nedbank"
         cal["nedbank_preset"] = True
         return cal
+    if bt in ("bank zero", "bankzero", "bank_zero"):
+        from app.services.parsers.bank_zero_pdf import BANK_ZERO_PRESET
+
+        cal = dict(BANK_ZERO_PRESET)
+        cal["bank_family"] = "Bank Zero"
+        cal["bank_zero_preset"] = True
+        return cal
     return {
         "file_type": "csv",
         "delimiter": ",",
@@ -217,6 +224,17 @@ SUPPORTED_BANKS: list[dict[str, Any]] = [
         "formats": "PDF",
         "layouts": [
             {"id": "personal_en", "label": "Personal (English)", "status": "locked"},
+        ],
+    },
+    {
+        "id": "bank-zero",
+        "bank_type": "Bank Zero",
+        "label": "Bank Zero",
+        "description": "PDF statements we have calibrated (personal Check Account).",
+        "suggested_name": "Bank Zero",
+        "formats": "PDF",
+        "layouts": [
+            {"id": "check_account_en", "label": "Check Account (English)", "status": "edition-1"},
         ],
     },
 ]
@@ -598,6 +616,45 @@ def parse_pdf_content(content: bytes, calibration: dict[str, Any]) -> list[Parse
                 return []
         except Exception:
             if forced_nedbank:
+                raise
+            pass
+
+    # ── Bank Zero (own module — before generic tables; Nedbank is a counterparty name) ─
+    from app.services.parsers.bank_zero_pdf import (
+        looks_like_bank_zero_text,
+        parse_bank_zero_pdf_text,
+    )
+
+    sample_text_bz = sample_text_ned
+    if not sample_text_bz:
+        try:
+            with pdfplumber.open(io.BytesIO(content)) as _pdf:
+                sample_text_bz = "\n".join((p.extract_text() or "") for p in _pdf.pages[:3])
+        except Exception:
+            sample_text_bz = ""
+
+    forced_bz = (
+        cal.get("bank_zero_preset")
+        or cal.get("bank_family") == "Bank Zero"
+        or (cal.get("parser") or "").lower().startswith("bank_zero")
+        or str(cal.get("bank_type") or "").lower() in {"bank zero", "bankzero"}
+    )
+    use_bz = forced_bz or looks_like_bank_zero_text(sample_text_bz)
+    if use_bz:
+        cal_bz = {
+            **cal,
+            "parser": "bank_zero_text",
+            "bank_zero_preset": True,
+            "bank_family": "Bank Zero",
+        }
+        try:
+            bz_txs = parse_bank_zero_pdf_text(content, cal_bz)
+            if bz_txs:
+                return bz_txs
+            if forced_bz:
+                return []
+        except Exception:
+            if forced_bz:
                 raise
             pass
 

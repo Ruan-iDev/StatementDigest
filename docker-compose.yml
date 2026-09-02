@@ -4,14 +4,15 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "8470:8470"
     environment:
       - LEDGERFLOW_DATA=/data
+      - LEDGERFLOW_PORT=8470
     volumes:
       - ./data:/data
       - ./backend:/app
     working_dir: /app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8470 --reload
 
   frontend:
     image: node:20-alpine
@@ -19,9 +20,9 @@ services:
     volumes:
       - ./frontend:/app
     ports:
-      - "3000:3000"
+      - "3470:3470"
     environment:
-      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api
+      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8470/api
     command: sh -c "npm install && npm run dev"
     depends_on:
       - backend

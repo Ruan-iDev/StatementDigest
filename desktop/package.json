@@ -1,6 +1,6 @@
 {
   "name": "ledgerflow-desktop",
-  "version": "1.4.0",
+  "version": "2.1.0",
   "private": true,
   "description": "LedgerFlow Windows desktop shell (Electron + local API)",
   "main": "main.js",

@@ -14,6 +14,10 @@ type ModalProps = {
   className?: string;
   /** Hide the X button (e.g. forced gate). */
   hideClose?: boolean;
+  /** When false, clicking the dimmed backdrop does not close. Default true. */
+  closeOnOutside?: boolean;
+  /** When false, Escape does not close. Defaults to the same as closeOnOutside. */
+  closeOnEscape?: boolean;
 };
 
 export function Modal({
@@ -24,15 +28,18 @@ export function Modal({
   children,
   className,
   hideClose,
+  closeOnOutside = true,
+  closeOnEscape,
 }: ModalProps) {
+  const allowEscape = closeOnEscape ?? closeOnOutside;
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && onClose && !hideClose) onClose();
+      if (e.key === "Escape" && onClose && !hideClose && allowEscape) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose, hideClose]);
+  }, [open, onClose, hideClose, allowEscape]);
 
   if (!open) return null;
 
@@ -40,8 +47,9 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => {
-          if (onClose && !hideClose) onClose();
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (onClose && !hideClose && closeOnOutside) onClose();
         }}
         aria-hidden
       />

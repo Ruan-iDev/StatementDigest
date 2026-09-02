@@ -1,21 +1,21 @@
 # App version & in-app updates
 
-> **Status (2026-08-06):** Current release **v1.4.0**. Footer version is live. **Settings → App updates is hidden** until the OTA/air-update channel is ready. Code remains in `frontend/components/app-updates-card.tsx`; re-enable from Settings when hosting is set up. Tracked in `docs/TODO.md`. Full changelog: [RELEASE_NOTES.md](./RELEASE_NOTES.md).
+> **Status (2026-09-02):** Current release **v2.1.0**. Footer version is live. **Settings → App updates is hidden** until the OTA/air-update channel is ready. Code remains in `frontend/components/app-updates-card.tsx`; re-enable from Settings when hosting is set up. Tracked in `docs/TODO.md`. Full changelog: [RELEASE_NOTES.md](./RELEASE_NOTES.md).
 
 ## Version in the UI
 
 | Where | What |
 |-------|------|
-| **Footer (right)** | `v1.4.0` — always visible for tester feedback |
+| **Footer (right)** | `v2.1.0` — always visible for tester feedback |
 | **Settings → App updates** | Same version + **Check for updates** (hidden until OTA ready) |
-| **API `/api/health`** | `"version": "1.4.0"` (or `LEDGERFLOW_APP_VERSION`) |
+| **API `/api/health`** | `"version": "2.1.0"` (or `LEDGERFLOW_APP_VERSION`) |
 
-**Source of truth:** repo root file `VERSION` (one line, e.g. `1.4.0`).
+**Source of truth:** repo root file `VERSION` (one line, e.g. `2.1.0`).
 
 Bump it **before** every tester build:
 
 ```text
-VERSION          →  1.4.0
+VERSION          →  2.1.0
 ```
 
 `scripts/build-desktop.ps1` reads `VERSION` and injects:
@@ -72,13 +72,13 @@ If unset, Settings still shows the card but explains that the channel is not con
 
 ### CORS
 
-The UI runs at `http://127.0.0.1:3000` and fetches the manifest. The host of `latest.json` must send:
+The UI runs at `http://127.0.0.1:3470` and fetches the manifest. The host of `latest.json` must send:
 
 ```http
 Access-Control-Allow-Origin: *
 ```
 
-(or allow `http://127.0.0.1:3000`). If CORS blocks the check, use a small static host (Cloudflare Pages, Netlify, S3 website, etc.).
+(or allow `http://127.0.0.1:3470`). If CORS blocks the check, use a small static host (Cloudflare Pages, Netlify, S3 website, etc.).
 
 ## Dev (`npm run dev`)
 

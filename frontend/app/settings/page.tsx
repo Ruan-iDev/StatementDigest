@@ -1,11 +1,11 @@
 "use client";
 
-import { BookOpen, Zap, UserRound, SlidersHorizontal } from "lucide-react";
+import { BookOpen, Zap, UserRound, SlidersHorizontal, Blocks, Palette, Eraser } from "lucide-react";
 import { HubTile } from "@/components/hub-tile";
-import { useProfile } from "@/components/profile-provider";
+import { useProfileOptional } from "@/components/profile-provider";
 
 export default function SettingsPage() {
-  const { active } = useProfile();
+  const active = useProfileOptional()?.active;
 
   return (
     <div className="space-y-8">
@@ -52,6 +52,27 @@ export default function SettingsPage() {
           title="Preferences"
           description="Financial year start and default currency — local only."
           icon={SlidersHorizontal}
+          accent="amber"
+        />
+        <HubTile
+          href="/settings/modules"
+          title="Modules"
+          description="Turn Quotes, Invoices, and Projects on or off for this workspace."
+          icon={Blocks}
+          accent="cyan"
+        />
+        <HubTile
+          href="/settings/appearance"
+          title="Appearance"
+          description="Theme pack and light / dark. The whole app follows your choice."
+          icon={Palette}
+          accent="magenta"
+        />
+        <HubTile
+          href="/settings/wipe"
+          title="Wipe transactions"
+          description="Permanently delete imported transactions for a year or month. Does not touch Work Flow."
+          icon={Eraser}
           accent="amber"
         />
       </div>

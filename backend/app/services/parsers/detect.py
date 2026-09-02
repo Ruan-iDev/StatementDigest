@@ -390,6 +390,66 @@ def _detect_pdf(content: bytes, filename: str) -> dict[str, Any]:
             ),
         }
 
+    # Bank Zero (must run before Nedbank — "Nedbank" appears as a counterparty)
+    from app.services.parsers.bank_zero_pdf import (
+        BANK_ZERO_PRESET,
+        looks_like_bank_zero_text,
+        parse_bank_zero_pdf_text,
+    )
+
+    fn = (filename or "").lower()
+    if looks_like_bank_zero_text(full_text) or "bank zero" in fn or "bankzero" in fn.replace(" ", ""):
+        cal_bz: dict[str, Any] = dict(BANK_ZERO_PRESET)
+        headers_bz = ["Date", "Description", "Amount", "Balance"]
+        cal_bz_roles = {
+            **cal_bz,
+            "date_column": "Date",
+            "description_column": "Description",
+            "amount_column": "Amount",
+            "balance_column": "Balance",
+        }
+        detected_columns = [
+            {"name": h, "role": _role_for_header(h, cal_bz_roles)} for h in headers_bz
+        ]
+        options = _build_options(cal_bz, has_card=False, is_pdf=True)
+        try:
+            parsed_bz = parse_bank_zero_pdf_text(content, cal_bz)[:12]
+        except Exception:
+            parsed_bz = []
+        return {
+            "bank_type": "Bank Zero",
+            "suggested_name": _suggested_name(filename, "Bank Zero"),
+            "detected_format": "pdf",
+            "calibration": cal_bz,
+            "columns": headers_bz,
+            "detected_columns": detected_columns,
+            "options": options,
+            "parsed_preview": [
+                {
+                    "date": str(p.date),
+                    "description": p.description,
+                    "amount": str(p.amount),
+                    "balance": str(p.balance) if p.balance is not None else None,
+                    "reference": p.reference,
+                }
+                for p in parsed_bz
+            ],
+            "sample_rows": [
+                {
+                    "date": str(p.date),
+                    "description": p.description,
+                    "amount": str(p.amount),
+                }
+                for p in parsed_bz[:5]
+            ],
+            "message": (
+                "Bank Zero statement detected. "
+                f"Found {len(parsed_bz)} sample transaction(s). "
+                "Amount is signed (in positive, spend negative). "
+                "Admin fees on a payment stay as a Bank Fee on that line."
+            ),
+        }
+
     # Nedbank personal current account (text tran list)
     from app.services.parsers.nedbank_pdf import (
         NEDBANK_PERSONAL_PRESET,

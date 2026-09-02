@@ -5,6 +5,93 @@
 
 ---
 
+## v2.1.0 — 2026-09-02
+
+**Theme:** Work Flow catalogue, quote print quality, and ledger list grouping — tester EXE.
+
+### Shipped in this test build
+
+**Work Flow · Products**
+- Markup % on each product: cost + % fills retail, cost + retail fills %
+- Free-text **Category** (no presets): type a name or pick one already used; matching names group on the list
+- Quote line picker can match on category
+
+**Work Flow · Quotes / invoices**
+- Quote number chip: rounded corners, 50% yellow
+- Print preview: **Save PDF** (real PDF bytes) and **Print** (system printer dialog — no blank pop-up)
+- Preview / print quality: 288 DPI on-screen; Print uses the original PDF when it can
+- Preview window closes when printing finishes
+- Duplicate quote; client-file Duplicate / Print preview / Process to invoice
+- Tab from reference no longer replaces the selected client
+
+**Ledger Flow**
+- Ledger Account Management grouped **Income → Expense → Transfer**
+- Bank Zero Check Account island (samples A + B; detect before Nedbank)
+
+**Desktop**
+- Crash logs still in `Documents\LedgerFlow\logs\` (from 2.0.1)
+
+### Upgrade notes
+- Close any previous portable EXE and `npm run dev` (they share ports 3470 / 8470)
+- Run `LedgerFlow-2.1.0-Portable.exe`
+- Data path unchanged: `Documents\LedgerFlow\Data`
+- First launch of this build adds `markup_percent` and `category` on products
+- Windows SmartScreen may warn (unsigned test build) — More info → Run anyway
+
+---
+
+## v2.0.1 — 2026-09-02
+
+**Theme:** Crash logs for portable EXE testers.
+
+### Shipped in this test build
+- Writes `Documents\LedgerFlow\logs\desktop.log`, `api.log`, and `last-error.txt`
+- Failed start opens that folder and names the port / PID that blocked launch
+- Quote **Duplicate** + Tab no longer overwrites the selected client
+
+---
+
+## v2.0.0 — 2026-09-02
+
+**Theme:** Work Flow — clients, products, quotes, invoices, staff, and project files in the portable EXE.
+
+### Shipped in this test build
+
+- **Work Flow** module beside Ledger Flow (clients, suppliers, staff, products, projects, quotes, invoices, reports)
+- **Products** library (name, description, supplier stock code, cost, retail) — goods, labour, or other repeating lines; type-to-pick on quote/invoice items
+- Quote / invoice editor with line items, VAT, branding, PDF print
+- Project files with a dated paper trail (notes, quotes, invoices, expenses, wages)
+- Staff library, wages on a project, staff statements
+- Independent On/Off for Quotes, Invoices, Projects (Settings → Modules)
+- Theme packs (Settings → Appearance)
+
+### Upgrade notes
+- Close any previous portable EXE; run `LedgerFlow-2.0.0-Portable.exe`
+- Data path unchanged: `Documents\LedgerFlow\Data`
+- First launch of this build creates Work Flow tables in the existing SQLite file
+- Windows SmartScreen may warn (unsigned test build) — More info → Run anyway
+
+---
+
+## v1.5.0 — 2026-08-17
+
+**Theme:** Practice documents — real quotes and invoices with line items.
+
+### Shipped in this test build
+
+- Client / supplier **Edit** (button + double-click) with full address, VAT, registration
+- Client library **Quote** and **Invoice** buttons open the document screen, pre-filled, next number applied
+- Quote / invoice **editor**: company (from My Profile) + client details, line items, totals
+- Project **+ Add** quote/invoice opens that same editor (not a tiny form)
+- Second **Add to trail** button at the bottom of the project paper trail
+- Independent module switches unchanged (Settings → Modules)
+
+### Upgrade notes
+- Restart the API after pulling this branch so new Practice tables/columns are created
+- Existing clients can be edited; add business/VAT details so they print on the next quote
+
+---
+
 ## v1.4.0 — 2026-08-06
 
 **Theme:** Guest can prove the product; bank pick simplified; FNB multi-layout island.

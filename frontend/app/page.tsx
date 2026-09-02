@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Upload, ListTodo, FileBarChart, Settings } from "lucide-react";
 import { api, type DashboardStats } from "@/lib/api";
 import { HubTile } from "@/components/hub-tile";
 import { MonthlyComparisonChart } from "@/components/monthly-comparison-chart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LEDGER_FLOW } from "@/modules/registry";
 
-export default function DashboardPage() {
+export default function LedgerFlowHomePage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -16,7 +16,7 @@ export default function DashboardPage() {
     api
       .dashboard()
       .then(setStats)
-      .catch((e) => setError(e.message || "Failed to load. Is the API running on :8000?"))
+      .catch((e) => setError(e.message || "Failed to load. Is the API running on :8470?"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -26,12 +26,12 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <header className="space-y-1">
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-[hsl(var(--neon-violet))]">
-          Main menu · Dashboard
+          Module · Ledger Flow
         </p>
-        <h1 className="page-title">What would you like to do?</h1>
+        <h1 className="page-title">Ledger Flow</h1>
         <p className="page-subtitle max-w-xl">
-          Four clear hubs. Upload statements, clear the queue, report progress, or tune your setup —
-          no clutter.
+          The books. Upload statements, clear the queue, report, and tune setup. Work Flow sits
+          next door — clients and billing stay out of statement upload.
         </p>
       </header>
 
@@ -49,39 +49,32 @@ export default function DashboardPage() {
       )}
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <HubTile
-          href="/upload"
-          title="Upload Statement"
-          description="Pick your bank, then import a PDF or CSV statement."
-          icon={Upload}
-          accent="cyan"
-        />
-        <HubTile
-          href="/pending"
-          title="Transactions"
-          description="Review and categorise transactions that still need a ledger."
-          icon={ListTodo}
-          accent="magenta"
-          badge={loading ? "…" : pending > 0 ? pending : "0"}
-          pulse={!loading && pending > 0}
-        />
-        <HubTile
-          href="/reports"
-          title="Reporting"
-          description="Profit & loss, budgets, and PDF exports for your books."
-          icon={FileBarChart}
-          accent="lime"
-        />
-        <HubTile
-          href="/settings"
-          title="Settings"
-          description="Bank profiles, ledger accounts, rules, and preferences."
-          icon={Settings}
-          accent="violet"
-        />
+        {LEDGER_FLOW.items.map((item) => {
+          const isTx = item.href === "/pending";
+          return (
+            <HubTile
+              key={item.href}
+              href={item.href}
+              title={item.label}
+              description={
+                item.href === "/upload"
+                  ? "Pick your bank, then import a PDF or CSV statement."
+                  : item.href === "/pending"
+                    ? "Review and categorise transactions that still need a ledger."
+                    : item.href === "/reports"
+                      ? "Profit & loss, budgets, and PDF exports for your books."
+                      : "Bank profiles, ledger accounts, rules, and preferences."
+              }
+              icon={item.icon}
+              accent={item.accent}
+              badge={isTx ? (loading ? "…" : pending > 0 ? pending : "0") : undefined}
+              pulse={isTx && !loading && pending > 0}
+            />
+          );
+        })}
       </div>
 
-      {/* Same MonthlyComparisonChart as Reporting — one shared component, not a fork */}
+      {/* Same MonthlyComparisonChart as Reporting — visible on the Ledger Flow home, not a tile */}
       <MonthlyComparisonChart />
 
       {stats && !error && (

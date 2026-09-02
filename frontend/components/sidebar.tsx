@@ -4,15 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Upload,
-  ListTodo,
-  FileBarChart,
-  Settings,
   Moon,
   Sun,
   Sparkles,
-  Eraser,
   ScrollText,
   LogOut,
 } from "lucide-react";
@@ -22,23 +16,15 @@ import { useTheme } from "@/components/theme-provider";
 import { useProfile } from "@/components/profile-provider";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
-import { WipeTransactionsModal } from "@/components/wipe-transactions-modal";
-import { useLicenseOptional } from "@/components/license-provider";
 import { TrialBadge } from "@/components/trial-gate";
-
-const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, accent: "violet" as const },
-  { href: "/upload", label: "Upload", icon: Upload, accent: "cyan" as const },
-  { href: "/pending", label: "Transactions", icon: ListTodo, accent: "magenta" as const },
-  { href: "/reports", label: "Reporting", icon: FileBarChart, accent: "lime" as const },
-  { href: "/settings", label: "Settings", icon: Settings, accent: "violet" as const },
-];
+import { APP_MODULES, moduleForPath } from "@/modules/registry";
 
 const ACCENT_DOT: Record<string, string> = {
   cyan: "bg-[hsl(var(--neon-cyan))] shadow-[0_0_8px_hsl(var(--neon-cyan))]",
   magenta: "bg-[hsl(var(--neon-magenta))] shadow-[0_0_8px_hsl(var(--neon-magenta))]",
   lime: "bg-[hsl(var(--neon-lime))] shadow-[0_0_8px_hsl(var(--neon-lime))]",
   violet: "bg-[hsl(var(--neon-violet))] shadow-[0_0_8px_hsl(var(--neon-violet))]",
+  amber: "bg-[hsl(var(--neon-amber))] shadow-[0_0_8px_hsl(var(--neon-amber))]",
 };
 
 const ACTIVE_BORDER: Record<string, string> = {
@@ -46,6 +32,7 @@ const ACTIVE_BORDER: Record<string, string> = {
   magenta: "border-[hsl(var(--neon-magenta)/0.6)] bg-[hsl(var(--neon-magenta)/0.1)] text-foreground",
   lime: "border-[hsl(var(--neon-lime)/0.6)] bg-[hsl(var(--neon-lime)/0.1)] text-foreground",
   violet: "border-[hsl(var(--neon-violet)/0.6)] bg-[hsl(var(--neon-violet)/0.1)] text-foreground",
+  amber: "border-[hsl(var(--neon-amber)/0.6)] bg-[hsl(var(--neon-amber)/0.1)] text-foreground",
 };
 
 export function Sidebar() {
@@ -53,9 +40,6 @@ export function Sidebar() {
   const { theme, toggle } = useTheme();
   const { active, profiles, requestSwitchProfile } = useProfile();
   const { username, logout, isGuest } = useAuth();
-  const license = useLicenseOptional();
-  const readOnly = Boolean(license?.readOnly);
-  const [wipeOpen, setWipeOpen] = useState(false);
   const [unallocatedCount, setUnallocatedCount] = useState(0);
 
   const refreshUnallocated = useCallback(async () => {
@@ -121,35 +105,39 @@ export function Sidebar() {
         </div>
       )}
       <nav className="flex-1 space-y-1 p-2.5">
-        {NAV.map((item) => {
-          const navActive =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname === item.href || pathname.startsWith(item.href + "/");
-          const Icon = item.icon;
-          const isTransactions = item.href === "/pending";
-          const pulseTx = isTransactions && unallocatedCount > 0 && !navActive;
+        {APP_MODULES.map((mod) => {
+          const current = moduleForPath(pathname);
+          const navActive = current?.id === mod.id;
+          const Icon = mod.icon;
+          const pulseTx = mod.id === "ledger-flow" && unallocatedCount > 0 && !navActive;
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={mod.id}
+              href={mod.href}
               className={cn(
                 "flex items-center gap-2.5 rounded-xl border border-transparent px-2.5 py-2 text-sm transition-all",
                 navActive
-                  ? ACTIVE_BORDER[item.accent]
+                  ? ACTIVE_BORDER[mod.accent]
                   : "text-muted-foreground hover:border-border hover:bg-accent/60 hover:text-foreground",
                 pulseTx && "nav-pulse-unallocated"
               )}
               title={
                 pulseTx
                   ? `${unallocatedCount} unallocated transaction${unallocatedCount === 1 ? "" : "s"}`
-                  : undefined
+                  : mod.description
               }
             >
-              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ACCENT_DOT[item.accent])} />
+              <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", ACCENT_DOT[mod.accent])} />
               <Icon className="h-4 w-4 shrink-0 opacity-90" />
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {isTransactions && unallocatedCount > 0 && (
+              <span className="min-w-0 flex-1">
+                <span className="block truncate leading-tight">{mod.name}</span>
+                {mod.subtitle ? (
+                  <span className="mt-0.5 block truncate text-[10px] leading-tight text-muted-foreground">
+                    {mod.subtitle}
+                  </span>
+                ) : null}
+              </span>
+              {mod.id === "ledger-flow" && unallocatedCount > 0 && (
                 <span className="nav-unallocated-badge">{unallocatedCount > 99 ? "99+" : unallocatedCount}</span>
               )}
             </Link>
@@ -157,17 +145,6 @@ export function Sidebar() {
         })}
       </nav>
       <div className="space-y-1 border-t border-border/80 p-2.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start gap-2 rounded-xl text-amber-700 hover:bg-amber-500/10 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
-          disabled={readOnly}
-          title={readOnly ? "Read-only — wipe locked" : undefined}
-          onClick={() => setWipeOpen(true)}
-        >
-          <Eraser className="h-4 w-4" />
-          Wipe transactions
-        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -200,22 +177,6 @@ export function Sidebar() {
           {isGuest ? "Exit guest" : `Log out${username ? ` (${username})` : ""}`}
         </Button>
       </div>
-      <WipeTransactionsModal
-        open={wipeOpen}
-        onClose={() => setWipeOpen(false)}
-        onWiped={() => {
-          if (typeof window !== "undefined") {
-            const path = window.location.pathname;
-            if (
-              path.startsWith("/pending") ||
-              path === "/" ||
-              path.startsWith("/reports")
-            ) {
-              window.setTimeout(() => window.location.reload(), 400);
-            }
-          }
-        }}
-      />
     </aside>
   );
 }

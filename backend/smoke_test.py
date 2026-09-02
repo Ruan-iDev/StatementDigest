@@ -3,7 +3,7 @@
 import httpx
 from pathlib import Path
 
-base = "http://127.0.0.1:8000/api"
+base = "http://127.0.0.1:8470/api"
 client = httpx.Client(timeout=30.0)
 
 print("health", client.get(f"{base}/health").json())

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api, type Ledger } from "@/lib/api";
 import { cn, formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { ParentLedgerPicker } from "@/components/parent-ledger-picker";
 
 const TYPES = ["income", "expense", "transfer", "capital", "other"];
+
+const TYPE_SECTIONS: { key: string; label: string }[] = [
+  { key: "income", label: "Income" },
+  { key: "expense", label: "Expense" },
+  { key: "transfer", label: "Transfer" },
+];
 
 export default function LedgersPage() {
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
@@ -36,6 +42,23 @@ export default function LedgersPage() {
   }, [showArchived]);
 
   const parentOptions = useMemo(() => ledgers.filter((l) => !l.is_archived), [ledgers]);
+
+  const typeGroups = useMemo(() => {
+    const known = new Set(TYPE_SECTIONS.map((s) => s.key));
+    const extras = [
+      ...new Set(ledgers.map((l) => l.type).filter((t) => t && !known.has(t))),
+    ].sort();
+    const sections = [
+      ...TYPE_SECTIONS,
+      ...extras.map((t) => ({
+        key: t,
+        label: t.charAt(0).toUpperCase() + t.slice(1),
+      })),
+    ];
+    return sections
+      .map((s) => ({ ...s, items: ledgers.filter((l) => l.type === s.key) }))
+      .filter((s) => s.items.length > 0);
+  }, [ledgers]);
 
   async function create() {
     if (!name.trim()) return;
@@ -245,66 +268,78 @@ export default function LedgersPage() {
               </tr>
             </thead>
             <tbody>
-              {ledgers.map((l) => {
-                const depth = l.depth ?? 0;
-                return (
-                  <tr key={l.id} className="border-b border-border/40">
-                    <td className="p-2 font-medium">
-                      <span
-                        className="inline-block"
-                        style={{ paddingLeft: `${Math.min(depth, 8) * 14}px` }}
-                      >
-                        {depth > 0 && (
-                          <span className="mr-1 text-muted-foreground">{"└ ".repeat(1)}</span>
-                        )}
-                        {l.name}
+              {typeGroups.map((group) => (
+                <Fragment key={group.key}>
+                  <tr className="border-b border-border/60 bg-muted/40">
+                    <td colSpan={7} className="px-2 py-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        {group.label}
                       </span>
-                      {l.parent_name && (
-                        <div
-                          className="text-[10px] text-muted-foreground"
-                          style={{ paddingLeft: `${Math.min(depth, 8) * 14}px` }}
-                        >
-                          under {l.parent_name}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <Badge variant="outline">{l.type}</Badge>
-                    </td>
-                    <td>
-                      {depth === 0 ? (
-                        <Badge variant="secondary">main</Badge>
-                      ) : (
-                        <Badge variant="outline">sub · L{depth}</Badge>
-                      )}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {l.budget_monthly != null ? formatMoney(l.budget_monthly) : "—"}
-                    </td>
-                    <td className="text-right tabular-nums">
-                      {l.budget_annual != null ? formatMoney(l.budget_annual) : "—"}
-                    </td>
-                    <td className="space-x-1">
-                      {l.is_system && <Badge variant="secondary">system</Badge>}
-                      {l.is_archived && <Badge variant="warning">archived</Badge>}
-                    </td>
-                    <td className="space-x-1 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(l)}>
-                        Edit
-                      </Button>
-                      {l.is_archived ? (
-                        <Button size="sm" variant="secondary" onClick={() => restore(l.id)}>
-                          Restore
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant="ghost" onClick={() => archive(l.id)}>
-                          Archive
-                        </Button>
-                      )}
+                      <span className="ml-2 text-xs text-muted-foreground">{group.items.length}</span>
                     </td>
                   </tr>
-                );
-              })}
+                  {group.items.map((l) => {
+                    const depth = l.depth ?? 0;
+                    return (
+                      <tr key={l.id} className="border-b border-border/40">
+                        <td className="p-2 font-medium">
+                          <span
+                            className="inline-block"
+                            style={{ paddingLeft: `${Math.min(depth, 8) * 14}px` }}
+                          >
+                            {depth > 0 && (
+                              <span className="mr-1 text-muted-foreground">{"└ ".repeat(1)}</span>
+                            )}
+                            {l.name}
+                          </span>
+                          {l.parent_name && (
+                            <div
+                              className="text-[10px] text-muted-foreground"
+                              style={{ paddingLeft: `${Math.min(depth, 8) * 14}px` }}
+                            >
+                              under {l.parent_name}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <Badge variant="outline">{l.type}</Badge>
+                        </td>
+                        <td>
+                          {depth === 0 ? (
+                            <Badge variant="secondary">main</Badge>
+                          ) : (
+                            <Badge variant="outline">sub · L{depth}</Badge>
+                          )}
+                        </td>
+                        <td className="text-right tabular-nums">
+                          {l.budget_monthly != null ? formatMoney(l.budget_monthly) : "—"}
+                        </td>
+                        <td className="text-right tabular-nums">
+                          {l.budget_annual != null ? formatMoney(l.budget_annual) : "—"}
+                        </td>
+                        <td className="space-x-1">
+                          {l.is_system && <Badge variant="secondary">system</Badge>}
+                          {l.is_archived && <Badge variant="warning">archived</Badge>}
+                        </td>
+                        <td className="space-x-1 text-right">
+                          <Button size="sm" variant="ghost" onClick={() => openEdit(l)}>
+                            Edit
+                          </Button>
+                          {l.is_archived ? (
+                            <Button size="sm" variant="secondary" onClick={() => restore(l.id)}>
+                              Restore
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="ghost" onClick={() => archive(l.id)}>
+                              Archive
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </CardContent>

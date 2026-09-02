@@ -22,7 +22,7 @@ When a chat or session drops, **continue from these files** — they are the sou
 
 ### Current release
 
-**v1.4.0** portable Windows EXE — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md) for shipped features and roadmap.
+**v2.1.0** portable Windows EXE (`desktop/dist/LedgerFlow-2.1.0-Portable.exe`) — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md).
 
 ### Next phase (after v1.4.0)
 
@@ -38,6 +38,7 @@ When a chat or session drops, **continue from these files** — they are the sou
 | FNB Gold Business | `fnb_pdf.py` | 1000+ · 100% |
 | Capitec Business | `capitec_pdf.py` | Sample locked; bulk TBD |
 | Nedbank Personal | `nedbank_pdf.py` | Sample locked; bulk TBD |
+| Bank Zero Check | `bank_zero_pdf.py` | Sample island (Jun/Jul 2026) |
 
 ## Stack
 
@@ -47,7 +48,7 @@ When a chat or session drops, **continue from these files** — they are the sou
 | Backend  | Python 3.11+ · FastAPI · SQLAlchemy |
 | Database | SQLite (`Documents/LedgerFlow/Data/ledgerflow.db` by default) |
 | PDF      | ReportLab (Windows-friendly; WeasyPrint not required) |
-| Parsers  | Isolated bank modules (Discovery / FNB / Capitec / Nedbank) + pdfplumber |
+| Parsers  | Isolated bank modules (Discovery / FNB / Capitec / Nedbank / Bank Zero) + pdfplumber |
 
 ## Project layout
 
@@ -92,9 +93,9 @@ That opens two PowerShell windows (API + UI), waits until both are healthy, and 
 
 | Service | URL |
 |---------|-----|
-| UI | [http://localhost:3000](http://localhost:3000) |
-| API | [http://127.0.0.1:8000](http://127.0.0.1:8000) |
-| API docs | [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) |
+| UI | [http://localhost:3470](http://localhost:3470) |
+| API | [http://127.0.0.1:8470](http://127.0.0.1:8470) |
+| API docs | [http://127.0.0.1:8470/docs](http://127.0.0.1:8470/docs) |
 
 On first backend start the DB is created and starter ledgers are seeded.
 
@@ -136,7 +137,7 @@ npm run dev
 Optional env (frontend):
 
 ```env
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8470/api
 ```
 
 ## Quick test path

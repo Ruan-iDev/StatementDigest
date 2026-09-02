@@ -7,9 +7,12 @@ from pathlib import Path
 
 block_cipher = None
 
+from PyInstaller.utils.hooks import collect_submodules
+
 # SPECPATH = directory containing this .spec (backend/packaging)
 SPECDIR = Path(SPECPATH).resolve()
 BACKEND = SPECDIR.parent  # backend/
+sys.path.insert(0, str(BACKEND))
 
 
 a = Analysis(
@@ -36,18 +39,22 @@ a = Analysis(
         "app.api.disclaimers",
         "app.api.imports",
         "app.api.ledgers",
+        "app.api.license",
         "app.api.local_data",
         "app.api.profiles",
         "app.api.reports",
         "app.api.rules",
         "app.api.settings",
         "app.api.transactions",
+        "app.license",
+        "app.modules.registry",
         "app.services.parsers.base",
         "app.services.parsers.detect",
         "app.services.parsers.discovery_pdf",
         "app.services.parsers.fnb_pdf",
         "app.services.parsers.capitec_pdf",
         "app.services.parsers.nedbank_pdf",
+        "app.services.parsers.bank_zero_pdf",
         "pdfplumber",
         "pdfminer",
         "pypdfium2",
@@ -60,7 +67,8 @@ a = Analysis(
         "multipart",
         "email.mime.multipart",
         "email.mime.text",
-    ],
+    ]
+    + collect_submodules("app.modules"),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

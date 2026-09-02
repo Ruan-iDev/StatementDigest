@@ -1,7 +1,7 @@
 # What this app is all about
 
 **Product name:** LedgerFlow  
-**Last updated:** 2026-08-03
+**Last updated:** 2026-09-02 · app **v2.1.0**
 
 ---
 
@@ -42,6 +42,9 @@ They should never need to understand double-entry, chart of accounts theory, or 
 
 6. **Settings**  
    Manage bank profiles, ledgers, rules, and simple preferences (currency, FY start). Day-to-day work starts from the dashboard hubs, not buried menus.
+
+7. **Practice (module, in progress on `feature/practice-module`)**  
+   Bolt-on desk for **clients**, **suppliers**, **project files**, then quotes and invoices. A project is a file you open — info sheet plus a dated paper trail. It shares login, workspace, and the local database with the core books. It does not replace statement upload.
 
 ---
 

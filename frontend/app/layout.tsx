@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="h-screen overflow-hidden bg-black font-sans text-foreground antialiased">
+    <html lang="en" className="dark" data-theme="ledger" suppressHydrationWarning>
+      <body className="h-screen overflow-hidden bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>

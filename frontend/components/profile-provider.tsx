@@ -123,6 +123,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+export function useProfileOptional() {
+  return React.useContext(ProfileContext);
+}
+
 export function useProfile() {
   const ctx = React.useContext(ProfileContext);
   if (!ctx) throw new Error("useProfile must be used within ProfileProvider");
