@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { api, setStoredProfileId, type UserProfile } from "@/lib/api";
 import { ProfileSwitchModal } from "@/components/profile-switch-modal";
 
@@ -25,6 +26,7 @@ type ProfileContextValue = {
 const ProfileContext = React.createContext<ProfileContextValue | null>(null);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [profiles, setProfiles] = React.useState<UserProfile[]>([]);
   const [active, setActive] = React.useState<UserProfile | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -107,13 +109,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       <ProfileSwitchModal
         open={!!pendingSwitch}
         profileName={pendingSwitch?.name || "profile"}
-        requiresPassword={Boolean(pendingSwitch?.has_password)}
+        requiresPassword={Boolean(
+          pendingSwitch?.has_password || pendingSwitch?.workspace_username
+        )}
+        workspaceUsername={pendingSwitch?.workspace_username}
         onClose={() => setPendingSwitch(null)}
+        onForgotPassword={() => {
+          setPendingSwitch(null);
+          router.push("/profiles");
+        }}
         onConfirm={async ({ username, password }) => {
           if (!pendingSwitch) return;
           await switchProfile(
             pendingSwitch.id,
-            pendingSwitch.has_password
+            pendingSwitch.has_password || pendingSwitch.workspace_username
               ? { workspace_username: username, password }
               : undefined
           );

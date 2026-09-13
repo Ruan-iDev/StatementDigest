@@ -672,6 +672,14 @@ export const api = {
         }),
       }),
     delete: (id: number) => request<void>(`/profiles/${id}`, { method: "DELETE" }),
+    resetWorkspaceLogin: (
+      id: number,
+      body: { workspace_username: string; password: string }
+    ) =>
+      request<UserProfile>(`/profiles/${id}/workspace-login`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     uploadLogo: (id: number, file: File) => {
       const fd = new FormData();
       fd.append("file", file);

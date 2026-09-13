@@ -8,7 +8,7 @@
 
 export const APP_VERSION =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_APP_VERSION?.trim()) ||
-  "2.1.0";
+  "2.1.1";
 
 
 /**

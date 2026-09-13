@@ -30,6 +30,7 @@ from app.schemas import (
     UserProfileOut,
     UserProfileSwitch,
     UserProfileUpdate,
+    WorkspaceLoginReset,
 )
 from app.security import hash_password, verify_password
 from app.seed import seed_ledgers_for_profile
@@ -252,6 +253,32 @@ def create_profile(
     set_active_profile_id(db, profile.id)
     db.refresh(profile)
     return _out(profile, db, profile.id)
+
+
+@router.post("/{profile_id}/workspace-login", response_model=UserProfileOut)
+def reset_workspace_login(
+    profile_id: int,
+    payload: WorkspaceLoginReset,
+    db: Session = Depends(get_db),
+    active_id: int = Depends(get_active_profile_id),
+):
+    """Reset extra-profile unlock details. Requires app login, not the old workspace password."""
+    p = db.get(UserProfile, profile_id)
+    if not p:
+        raise HTTPException(404, "Profile not found")
+    user = (payload.workspace_username or "").strip()
+    if len(user) < 2:
+        raise HTTPException(400, "Workspace username must be at least 2 characters")
+    if not payload.password:
+        raise HTTPException(400, "Workspace password is required")
+    try:
+        p.workspace_username = user
+        p.password_hash = hash_password(payload.password)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    db.commit()
+    db.refresh(p)
+    return _out(p, db, active_id)
 
 
 @router.get("/{profile_id}/logo")

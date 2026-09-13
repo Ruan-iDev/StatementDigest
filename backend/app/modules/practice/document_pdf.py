@@ -190,13 +190,21 @@ def generate_document_pdf(
     right = ParagraphStyle("Right", parent=body, alignment=TA_RIGHT)
     small = ParagraphStyle("Small", parent=styles["Normal"], fontSize=8, leading=10, textColor=colors.HexColor("#475569"))
 
-    kind = "INVOICE" if doc.kind == "invoice" else "QUOTE"
+    is_rfq = doc.kind == "rfq"
+    if doc.kind == "invoice":
+        kind = "INVOICE"
+        ref_label = "Invoice Reference"
+    elif is_rfq:
+        kind = "RFQ"
+        ref_label = "RFQ Reference"
+    else:
+        kind = "QUOTE"
+        ref_label = "Quote Reference"
     story: list = []
     usable = 178 * mm
     third = usable / 3
 
     issued = doc.issued_on.isoformat() if doc.issued_on else ""
-    ref_label = "Invoice Reference" if doc.kind == "invoice" else "Quote Reference"
     left_block = [
         Paragraph("Issued Date", label_head),
         Paragraph(_esc(issued or "—"), small),
@@ -207,6 +215,7 @@ def generate_document_pdf(
     number_chip = RoundedNumberChip(doc.number or "")
     mid_block = [
         Paragraph(kind, heading),
+        *([Paragraph("Request for Quote", small)] if is_rfq else []),
         Spacer(1, 2 * mm),
         number_chip,
     ]
@@ -248,9 +257,10 @@ def generate_document_pdf(
 
     from_lines = "<br/>".join(_esc(x) for x in _card_lines(issuer or doc.issuer_snapshot))
     to_lines = "<br/>".join(_esc(x) for x in _card_lines(doc.client_snapshot))
+    to_label = "To" if is_rfq else "Bill TO"
     parties = Table(
         [
-            [Paragraph("FROM", label_head), Paragraph("Bill TO", label_head)],
+            [Paragraph("FROM", label_head), Paragraph(to_label, label_head)],
             [Paragraph(from_lines or "—", body), Paragraph(to_lines or "—", body)],
         ],
         colWidths=[usable / 2, usable / 2],
@@ -259,27 +269,41 @@ def generate_document_pdf(
     story.append(parties)
     story.append(Spacer(1, 5 * mm))
 
-    widths = [usable * 0.20, usable * 0.30, usable * 0.10, usable * 0.20, usable * 0.20]
-    header = [
-        Paragraph("Item", body),
-        Paragraph("Description", body),
-        Paragraph("Qty", right),
-        Paragraph("Rate", right),
-        Paragraph("Line total ex VAT", right),
-    ]
+    if is_rfq:
+        widths = [usable * 0.28, usable * 0.52, usable * 0.20]
+        header = [
+            Paragraph("Item", body),
+            Paragraph("Description", body),
+            Paragraph("Qty", right),
+        ]
+    else:
+        widths = [usable * 0.20, usable * 0.30, usable * 0.10, usable * 0.20, usable * 0.20]
+        header = [
+            Paragraph("Item", body),
+            Paragraph("Description", body),
+            Paragraph("Qty", right),
+            Paragraph("Rate", right),
+            Paragraph("Line total ex VAT", right),
+        ]
     data = [header]
     for ln in doc.lines or []:
         qty = to_decimal(ln.quantity)
         hide_money = qty == 0
-        data.append(
-            [
-                Paragraph(_esc(getattr(ln, "item", "") or "").replace("\n", "<br/>"), body),
-                Paragraph(_esc(ln.description or "").replace("\n", "<br/>"), body),
-                Paragraph("" if hide_money else _esc(f"{qty:g}"), right),
-                Paragraph("" if hide_money else _esc(_money(ln.unit_price, currency)), right),
-                Paragraph("" if hide_money else _esc(_money(ln.amount, currency)), right),
-            ]
-        )
+        qty_cell = Paragraph("" if hide_money else _esc(f"{qty:g}"), right)
+        item_cell = Paragraph(_esc(getattr(ln, "item", "") or "").replace("\n", "<br/>"), body)
+        desc_cell = Paragraph(_esc(ln.description or "").replace("\n", "<br/>"), body)
+        if is_rfq:
+            data.append([item_cell, desc_cell, qty_cell])
+        else:
+            data.append(
+                [
+                    item_cell,
+                    desc_cell,
+                    qty_cell,
+                    Paragraph("" if hide_money else _esc(_money(ln.unit_price, currency)), right),
+                    Paragraph("" if hide_money else _esc(_money(ln.amount, currency)), right),
+                ]
+            )
     table = Table(data, colWidths=widths, repeatRows=1)
     table.setStyle(
         TableStyle(
@@ -299,34 +323,35 @@ def generate_document_pdf(
     story.append(table)
     story.append(Spacer(1, 5 * mm))
 
-    vat_on = bool(getattr(doc, "vat_enabled", False))
-    subtotal = to_decimal(getattr(doc, "subtotal", None) or doc.amount)
-    vat_amt = to_decimal(getattr(doc, "vat_amount", None) or 0)
-    rate = to_decimal(getattr(doc, "vat_rate", None) or 15)
-    total = to_decimal(doc.amount)
-    if vat_on:
-        totals = [
-            ["Subtotal ex VAT", _money(subtotal, currency)],
-            [f"VAT {rate:g}%", _money(vat_amt, currency)],
-            ["Total incl. VAT", _money(total, currency)],
-        ]
-    else:
-        totals = [["Total excl. VAT", _money(subtotal, currency)]]
-    tot = Table(totals, colWidths=[40 * mm, 40 * mm], hAlign="RIGHT")
-    tot.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
+    if not is_rfq:
+        vat_on = bool(getattr(doc, "vat_enabled", False))
+        subtotal = to_decimal(getattr(doc, "subtotal", None) or doc.amount)
+        vat_amt = to_decimal(getattr(doc, "vat_amount", None) or 0)
+        rate = to_decimal(getattr(doc, "vat_rate", None) or 15)
+        total = to_decimal(doc.amount)
+        if vat_on:
+            totals = [
+                ["Subtotal ex VAT", _money(subtotal, currency)],
+                [f"VAT {rate:g}%", _money(vat_amt, currency)],
+                ["Total incl. VAT", _money(total, currency)],
             ]
+        else:
+            totals = [["Total excl. VAT", _money(subtotal, currency)]]
+        tot = Table(totals, colWidths=[40 * mm, 40 * mm], hAlign="RIGHT")
+        tot.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ]
+            )
         )
-    )
-    story.append(tot)
+        story.append(tot)
 
     bank = getattr(doc, "bank_snapshot", None) or {}
-    if any(bank.get(k) for k in ("bank_name", "bank_account_number", "bank_account_name")):
+    if not is_rfq and any(bank.get(k) for k in ("bank_name", "bank_account_number", "bank_account_name")):
         story.append(Spacer(1, 6 * mm))
         story.append(Paragraph("Bank details", label_head))
         bits = [

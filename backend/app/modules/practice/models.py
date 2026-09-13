@@ -30,6 +30,7 @@ class EntryType(str, enum.Enum):
     NOTE = "note"
     QUOTE = "quote"
     INVOICE = "invoice"
+    RFQ = "rfq"
     EXPENSE = "expense"
     FILE = "file"
     STATUS = "status"
@@ -42,6 +43,7 @@ class EntryType(str, enum.Enum):
 class DocumentKind(str, enum.Enum):
     QUOTE = "quote"
     INVOICE = "invoice"
+    RFQ = "rfq"
 
 
 class DocumentStatus(str, enum.Enum):
@@ -156,7 +158,7 @@ class PracticeTemplate(Base):
     user_profile_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("user_profiles.id"), nullable=False, index=True
     )
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # quote | invoice
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # quote | invoice | rfq
     # Legacy columns — VAT now lives on PracticeSettings. Left in place for SQLite.
     vat_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), default=Decimal("15.000"))
@@ -176,7 +178,7 @@ class PracticeTemplate(Base):
 
 
 class PracticeDocument(Base):
-    """Quote or invoice. Independent of projects; may optionally sit on a project file."""
+    """Quote, invoice, or RFQ. Independent of projects; may optionally sit on a project file."""
 
     __tablename__ = "practice_documents"
 
@@ -231,7 +233,7 @@ class PracticeDocument(Base):
 
 
 class PracticeDocumentLine(Base):
-    """A line on a quote or invoice."""
+    """A line on a quote, invoice, or RFQ."""
 
     __tablename__ = "practice_document_lines"
 

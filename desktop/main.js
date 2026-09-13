@@ -5,7 +5,7 @@
  * 127.0.0.1:3470, opens a BrowserWindow, and tears everything down on quit.
  */
 
-const { app, BrowserWindow, dialog, shell, ipcMain, Menu } = require("electron");
+const { app, BrowserWindow, dialog, shell, ipcMain, Menu, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -461,14 +461,190 @@ function splashHtmlPath() {
   return path.join(__dirname, "splash.html");
 }
 
+const DEFAULT_WINDOW_WIDTH = 1280;
+const DEFAULT_WINDOW_HEIGHT = 840;
+const MIN_WINDOW_WIDTH = 960;
+const MIN_WINDOW_HEIGHT = 640;
+
+function windowStatePath() {
+  const dir = path.join(os.homedir(), "Documents", "LedgerFlow");
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    /* ignore */
+  }
+  return path.join(dir, "window-state.json");
+}
+
+function readWindowState() {
+  try {
+    const data = JSON.parse(fs.readFileSync(windowStatePath(), "utf8"));
+    if (!data || typeof data !== "object") return null;
+    const width = Number(data.width);
+    const height = Number(data.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+    return {
+      width,
+      height,
+      maximized: !!data.maximized,
+      displayId: data.displayId,
+      displayBounds:
+        data.displayBounds && typeof data.displayBounds === "object" ? data.displayBounds : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function displayBoundsMatch(a, b) {
+  if (!a || !b) return false;
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+function pickRestoreDisplay(saved) {
+  const displays = screen.getAllDisplays();
+  if (!displays.length) return screen.getPrimaryDisplay();
+  if (saved && saved.displayId != null) {
+    const byId = displays.find((d) => d.id === saved.displayId);
+    if (byId) return byId;
+  }
+  if (saved && saved.displayBounds) {
+    const byGeom = displays.find((d) => displayBoundsMatch(d.bounds, saved.displayBounds));
+    if (byGeom) return byGeom;
+  }
+  return screen.getPrimaryDisplay();
+}
+
+function clampToWorkArea(width, height, workArea) {
+  const maxW = Math.max(MIN_WINDOW_WIDTH, workArea.width);
+  const maxH = Math.max(MIN_WINDOW_HEIGHT, workArea.height);
+  return {
+    width: Math.max(MIN_WINDOW_WIDTH, Math.min(Math.round(width), maxW)),
+    height: Math.max(MIN_WINDOW_HEIGHT, Math.min(Math.round(height), maxH)),
+  };
+}
+
+function centerOnWorkArea(width, height, workArea) {
+  return {
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    width,
+    height,
+  };
+}
+
+function boundsOverlapEnough(bounds, workArea) {
+  const overlapW = Math.max(
+    0,
+    Math.min(bounds.x + bounds.width, workArea.x + workArea.width) - Math.max(bounds.x, workArea.x)
+  );
+  const overlapH = Math.max(
+    0,
+    Math.min(bounds.y + bounds.height, workArea.y + workArea.height) -
+      Math.max(bounds.y, workArea.y)
+  );
+  return overlapW >= 80 && overlapH >= 80;
+}
+
+function fillsWorkArea(size, workArea) {
+  return size.width >= workArea.width - 8 && size.height >= workArea.height - 8;
+}
+
+function resolveWindowPlacement() {
+  const saved = readWindowState();
+  const display = pickRestoreDisplay(saved);
+  const workArea = display.workArea;
+  const size = clampToWorkArea(
+    saved ? saved.width : DEFAULT_WINDOW_WIDTH,
+    saved ? saved.height : DEFAULT_WINDOW_HEIGHT,
+    workArea
+  );
+  const maximized = !!(saved && saved.maximized) || fillsWorkArea(size, workArea);
+  const bounds = centerOnWorkArea(size.width, size.height, workArea);
+  log(
+    "info",
+    `window placement ${bounds.width}x${bounds.height} at ${bounds.x},${bounds.y} maximized=${maximized} display=${display.id}`
+  );
+  return { bounds, maximized };
+}
+
+function currentNormalBounds() {
+  if (!mainWindow || mainWindow.isDestroyed()) return null;
+  try {
+    if (typeof mainWindow.getNormalBounds === "function") {
+      return mainWindow.getNormalBounds();
+    }
+  } catch {
+    /* ignore */
+  }
+  return mainWindow.getBounds();
+}
+
+function persistWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    const maximized = mainWindow.isMaximized();
+    const visibleBounds = mainWindow.getBounds();
+    const bounds = currentNormalBounds() || visibleBounds;
+    const display = screen.getDisplayMatching(visibleBounds);
+    const payload = {
+      width: Math.round(bounds.width),
+      height: Math.round(bounds.height),
+      maximized,
+      displayId: display && display.id,
+      displayBounds: display && display.bounds,
+    };
+    fs.writeFileSync(windowStatePath(), JSON.stringify(payload, null, 2), "utf8");
+  } catch (err) {
+    log("error", `window state save failed: ${err && err.message}`);
+  }
+}
+
+let saveWindowStateTimer = null;
+function schedulePersistWindowState() {
+  if (saveWindowStateTimer) clearTimeout(saveWindowStateTimer);
+  saveWindowStateTimer = setTimeout(() => {
+    saveWindowStateTimer = null;
+    persistWindowState();
+  }, 400);
+}
+
+function ensureWindowOnAScreen() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return;
+  const bounds = mainWindow.getBounds();
+  const visible = screen.getAllDisplays().some((d) => boundsOverlapEnough(bounds, d.workArea));
+  if (visible) return;
+  const wasMax = mainWindow.isMaximized();
+  const display = screen.getPrimaryDisplay();
+  const normal = currentNormalBounds() || bounds;
+  const size = clampToWorkArea(normal.width, normal.height, display.workArea);
+  const placed = centerOnWorkArea(size.width, size.height, display.workArea);
+  log("info", `window off-screen — recentering on primary ${placed.width}x${placed.height}`);
+  if (wasMax) {
+    try {
+      mainWindow.unmaximize();
+    } catch {
+      /* ignore */
+    }
+  }
+  mainWindow.setBounds(placed);
+  if (wasMax || fillsWorkArea(size, display.workArea)) {
+    mainWindow.maximize();
+  }
+  persistWindowState();
+}
+
 function createWindow() {
   // Frameless chrome: no File/Edit menu bar, no OS title bar / caption buttons.
   // The React UI supplies its own drag region + min/max/close controls.
+  const placement = resolveWindowPlacement();
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 960,
-    minHeight: 640,
+    x: placement.bounds.x,
+    y: placement.bounds.y,
+    width: placement.bounds.width,
+    height: placement.bounds.height,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     title: "LedgerFlow",
     show: false,
     frame: false,
@@ -482,7 +658,17 @@ function createWindow() {
     },
   });
 
+  // Keep app chrome (sidebar, title bar) at 100%. Quote/invoice canvas zoom is in the UI.
+  try {
+    mainWindow.webContents.setVisualZoomLevelLimits(1, 1);
+  } catch {
+    /* older Electron */
+  }
+
   mainWindow.once("ready-to-show", () => {
+    if (placement.maximized && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.maximize();
+    }
     mainWindow.show();
   });
 
@@ -517,6 +703,7 @@ function createWindow() {
 
   // Data lock: registered sessions must log out before the window may close
   mainWindow.on("close", (e) => {
+    persistWindowState();
     if (shuttingDown || closeAllowed) return;
     e.preventDefault();
     dialog.showMessageBox(mainWindow, {
@@ -538,8 +725,16 @@ function createWindow() {
       mainWindow.webContents.send("desktop:maximized-changed", mainWindow.isMaximized());
     }
   };
-  mainWindow.on("maximize", notifyMaxState);
-  mainWindow.on("unmaximize", notifyMaxState);
+  mainWindow.on("maximize", () => {
+    notifyMaxState();
+    persistWindowState();
+  });
+  mainWindow.on("unmaximize", () => {
+    notifyMaxState();
+    persistWindowState();
+  });
+  mainWindow.on("resize", schedulePersistWindowState);
+  mainWindow.on("move", schedulePersistWindowState);
 
   // Black splash immediately (logo + quotes) while API boots
   return mainWindow.loadFile(splashHtmlPath());
@@ -691,6 +886,7 @@ async function quitApp() {
   if (quitStarted) return;
   quitStarted = true;
   log("info", "quitApp");
+  persistWindowState();
   closeAllowed = true; // allow window destruction during teardown
   try {
     await shutdown();
@@ -864,6 +1060,12 @@ registerIpc();
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  const onDisplayChange = () => {
+    setTimeout(ensureWindowOnAScreen, 250);
+  };
+  screen.on("display-removed", onDisplayChange);
+  screen.on("display-added", onDisplayChange);
+  screen.on("display-metrics-changed", onDisplayChange);
   app.on("render-process-gone", (_e, _wc, details) => {
     logError(
       "render-process-gone",

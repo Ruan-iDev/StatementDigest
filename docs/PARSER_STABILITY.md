@@ -19,7 +19,7 @@ This document explains how to **keep that accuracy from being tainted** as we ke
 | Bank / format | Module | Status | Human verification |
 |---------------|--------|--------|--------------------|
 | **Discovery Personal** (PDF text) | `discovery_pdf.py` | ✅ Edition-1 locked | **226 txs · 100% accurate** |
-| **FNB** brand (Gold Business EN + Fusion AF personal) | `fnb_pdf.py` | ✅ Multi-layout island | Gold Business **1000+ · 100%**; Fusion AF edition-1 sample |
+| **FNB** brand (Gold Business EN + Fusion AF personal) | `fnb_pdf.py` | ✅ Multi-layout island | Gold Business **1000+ · 100%**; Fusion AF edition-1 sample. Accrued Bank Charges column is memo (does not post). R0.00 + last-column fee is not income. Image-only 18th posted debits keep statement wording: R49 = `#Monthly Account Fee`, other = `#Service Fees` (ledger allocation is a separate user step). |
 | **Capitec Business** (PDF table) | `capitec_pdf.py` | ✅ Edition-1 locked | Sample sealed; **bulk import TBD** |
 | **Nedbank Personal** (PDF text) | `nedbank_pdf.py` | ✅ Edition-1 locked | Sample sealed; **bulk import TBD** |
 | **Bank Zero** Check Account | `bank_zero_pdf.py` | ✅ Edition-1 sample | June + July 2026 samples |
@@ -65,7 +65,7 @@ If a change would touch a **locked** module, stop and ask: *Is this a proven reg
 
 | Layout | Status | Notes |
 |--------|--------|-------|
-| **Gold Business (English)** | ✅ LOCKED | Human: **1000+ txs · 100% accurate** (2026-07-31). Lines like `26 May … 21,845.00Cr`. Regression: `test_fnb_business_text_parser_amounts_and_year` |
+| **Gold Business (English)** | ✅ LOCKED | Human: **1000+ txs · 100% accurate** (2026-07-31). Lines like `26 May … 21,845.00Cr`. Image-only fee lines keep `#Monthly Account Fee` / `#Service Fees`. Regression: `test_fnb_business_text_parser_amounts_and_year`, `test_fnb_gold_zero_amount_accrued_charge_is_not_income` |
 | **Fusion Private Wealth (Afrikaans personal)** | ✅ Edition-1 sample | `25Okt … 42,000.00Kt` · Kt=krediet in, bare=debit. Regression: `test_fnb_fusion_afrikaans_personal_text_parser` |
 
 - Module: `fnb_pdf.py` only (additive layouts; Gold Business rules stay locked)  

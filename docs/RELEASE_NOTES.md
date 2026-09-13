@@ -5,6 +5,23 @@
 
 ---
 
+## v2.1.1 — 2026-09-13
+
+**Theme:** EXE profile switch, Work Flow RFQ, FNB fee lines.
+
+- Frameless desktop window was treating the unlock overlay as a drag region, so clicks never reached the inputs
+- Unlock dialog is now portaled above the chrome with `no-drag` on fields
+- Reset workspace username/password from My Profile without the old password
+- **RFQ** (Request for Quote): create from a supplier file or project **+ Add** — quote sheet with item, description and quantity only (no prices)
+- FNB Gold Business: R0.00 accrued-charge lines are not treated as income; image-only fees keep statement wording
+- Quote/invoice workspace zoom (Ctrl + / − / 0, persisted)
+
+### Upgrade notes
+- Close `LedgerFlow-2.1.0-Portable.exe`, run `LedgerFlow-2.1.1-Portable.exe`
+- RFQ numbering starts at `RFQ-001` per workspace
+
+---
+
 ## v2.1.0 — 2026-09-02
 
 **Theme:** Work Flow catalogue, quote print quality, and ledger list grouping — tester EXE.

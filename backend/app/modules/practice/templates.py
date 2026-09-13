@@ -32,11 +32,15 @@ router = APIRouter()
 
 _ALLOWED_LOGO = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _MAX_LOGO = 3 * 1024 * 1024
-_KINDS = ("quote", "invoice")
+_KINDS = ("quote", "invoice", "rfq")
 
 
 def default_prefix(kind: str) -> str:
-    return "INV" if kind == "invoice" else "QTE"
+    if kind == "invoice":
+        return "INV"
+    if kind == "rfq":
+        return "RFQ"
+    return "QTE"
 
 
 def format_number(prefix: str, width: int, n: int) -> str:
@@ -131,7 +135,7 @@ def resolve_vat(settings) -> tuple[bool, Decimal]:
 
 def get_or_create_template(db: Session, profile_id: int, kind: str) -> PracticeTemplate:
     if kind not in _KINDS:
-        raise HTTPException(400, "kind must be quote or invoice")
+        raise HTTPException(400, "kind must be quote, invoice, or rfq")
     row = (
         db.query(PracticeTemplate)
         .filter(PracticeTemplate.user_profile_id == profile_id, PracticeTemplate.kind == kind)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { KeyRound, Lock, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,10 @@ type Props = {
   profileName: string;
   /** Extra client workspace — username + password required */
   requiresPassword: boolean;
+  /** Known workspace username (not secret) — prefills the field. */
+  workspaceUsername?: string | null;
   onClose: () => void;
+  onForgotPassword?: () => void;
   onConfirm: (creds: { username: string; password: string }) => Promise<void>;
 };
 
@@ -25,7 +29,9 @@ export function ProfileSwitchModal({
   open,
   profileName,
   requiresPassword,
+  workspaceUsername,
   onClose,
+  onForgotPassword,
   onConfirm,
 }: Props) {
   const [username, setUsername] = useState("");
@@ -33,15 +39,18 @@ export function ProfileSwitchModal({
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<"form" | "loading">("form");
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
-    setUsername("");
+    setUsername((workspaceUsername || "").trim());
     setPassword("");
     setError(null);
     setBusy(false);
     setPhase("form");
-  }, [open]);
+  }, [open, workspaceUsername]);
 
   useEffect(() => {
     if (!open) return;
@@ -76,17 +85,15 @@ export function ProfileSwitchModal({
     }
   }
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/85 px-4 py-8 backdrop-blur-md"
+      className="desktop-no-drag fixed inset-0 z-[400] flex flex-col items-center justify-center bg-black/85 px-4 py-8"
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-switch-title"
     >
-      <div className="pointer-events-none absolute inset-0" aria-hidden />
-
       <div
         className={cn(
           "relative z-10 w-full max-w-md rounded-2xl border-2 border-[hsl(var(--neon-violet)/0.55)]",
@@ -137,7 +144,9 @@ export function ProfileSwitchModal({
                   <Label htmlFor="profile-switch-user">Workspace username</Label>
                   <Input
                     id="profile-switch-user"
-                    autoComplete="username"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="h-11"
@@ -151,7 +160,7 @@ export function ProfileSwitchModal({
                   <Input
                     id="profile-switch-pw"
                     type="password"
-                    autoComplete="current-password"
+                    autoComplete="off"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="h-11 font-mono"
@@ -159,6 +168,15 @@ export function ProfileSwitchModal({
                     placeholder="Password for this profile"
                   />
                 </div>
+                {onForgotPassword && (
+                  <button
+                    type="button"
+                    className="text-left text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    onClick={onForgotPassword}
+                  >
+                    Forgot this workspace password? Reset it on My Profile.
+                  </button>
+                )}
               </div>
             )}
 
@@ -191,6 +209,7 @@ export function ProfileSwitchModal({
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

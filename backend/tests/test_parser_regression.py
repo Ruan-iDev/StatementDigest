@@ -108,6 +108,43 @@ Closing Balance 1,575.00Cr
     assert sum((t.amount for t in txs), Decimal("0")) == Decimal("1575.00")
 
 
+def test_fnb_gold_zero_amount_accrued_charge_is_not_income():
+    """Gold Business: image-only description + R0.00 amount + last-column fee.
+
+    Accrued charges do not post. The R0.00 line must not treat the Cr balance
+    as income. Following bare amounts keep statement wording (R49 = Monthly
+    Account Fee; other = Service Fees) — not the allocation ledger name.
+    Additive — locked Gold lines above must still parse unchanged.
+    """
+    from app.services.parsers.fnb_pdf import parse_fnb_gold_business_text
+
+    sample = """
+GOLD BUSINESS ACCOUNT
+Statement Period : 28 February 2026 to 31 March 2026
+Statement Date : 31 March 2026
+Transactions in RAND (ZAR)
+16 Mar FNB App Payment To Board Mart 4,293.87 32,763.99Cr
+18 Mar 0.00 32,763.99Cr 80.00
+18 Mar 49.00 32,714.99Cr
+18 Mar 121.04 32,593.95Cr
+24 Mar FNB App Payment To Board Mart 11,166.59 21,427.36Cr
+Closing Balance 21,427.36Cr
+"""
+    txs = parse_fnb_gold_business_text(sample, {"amount_style": "credit_suffix_cr"})
+    amounts = [t.amount for t in txs]
+    assert Decimal("32763.99") not in amounts
+    assert Decimal("80.00") not in amounts
+    assert Decimal("-4293.87") in amounts
+    assert Decimal("-49.00") in amounts
+    assert Decimal("-121.04") in amounts
+    assert Decimal("-11166.59") in amounts
+    monthly = [t for t in txs if t.description == "#Monthly Account Fee"]
+    service = [t for t in txs if t.description == "#Service Fees"]
+    assert len(monthly) == 1 and monthly[0].amount == Decimal("-49.00")
+    assert len(service) == 1 and service[0].amount == Decimal("-121.04")
+    assert not any(t.description == "Bank charges" for t in txs)
+
+
 def test_fnb_fusion_afrikaans_personal_text_parser():
     """FNB Fusion Private Wealth (Afrikaans) — additive layout, does not replace Gold Business.
 

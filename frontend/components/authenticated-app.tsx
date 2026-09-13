@@ -17,6 +17,7 @@ import {
 import { TrialGate } from "@/components/trial-gate";
 import { LicenseProvider } from "@/components/license-provider";
 import { ModuleFlagsProvider } from "@/modules/practice/flags-provider";
+import { WorkspaceZoom } from "@/components/workspace-zoom";
 
 /** Full app chrome — only mounted after a session is active. */
 export function AuthenticatedApp({ children }: { children: React.ReactNode }) {
@@ -43,8 +44,8 @@ export function AuthenticatedApp({ children }: { children: React.ReactNode }) {
                       <Suspense fallback={null}>
                         <ModuleSubnav />
                       </Suspense>
-                      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-                        <div className="mx-auto w-full max-w-full p-4 md:p-6 lg:px-8">{children}</div>
+                      <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                        <WorkspaceZoom>{children}</WorkspaceZoom>
                       </main>
                     </div>
                   </div>

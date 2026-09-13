@@ -270,7 +270,7 @@ class AddressCard(BaseModel):
 
 
 class DocumentCreate(BaseModel):
-    kind: str = Field(pattern="^(quote|invoice)$")
+    kind: str = Field(pattern="^(quote|invoice|rfq)$")
     title: str = Field(min_length=1, max_length=240)
     amount: Optional[Decimal] = None
     issued_on: Optional[date] = None

@@ -69,6 +69,29 @@ _NOTE_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _NOTE_IMAGE_MAX = 6 * 1024 * 1024
 
 
+def _kind_label(kind: str) -> str:
+    if kind == DocumentKind.RFQ.value:
+        return "RFQ"
+    if kind == DocumentKind.INVOICE.value:
+        return "Invoice"
+    return "Quote"
+
+
+def _require_document_feature(db: Session, profile_id: int, kind: str) -> None:
+    if kind == DocumentKind.RFQ.value:
+        return
+    require_feature(db, profile_id, "quotes" if kind == "quote" else "invoices")
+
+
+def _assert_document_party(
+    db: Session, profile_id: int, kind: str, party_id: int | None
+) -> PracticeParty | None:
+    party = _party(db, profile_id, party_id)
+    if kind == DocumentKind.RFQ.value and party is not None and party.kind != PartyKind.SUPPLIER.value:
+        raise HTTPException(400, "RFQ vendor must be a supplier from your library")
+    return party
+
+
 def _money(value) -> Decimal:
     return quantize_money(to_decimal(value if value is not None else 0))
 
@@ -169,7 +192,7 @@ def _replace_lines(db: Session, document: PracticeDocument, lines: list[Document
         if not item and not desc:
             continue
         qty = _money(line.quantity if line.quantity is not None else 1)
-        price = _money(line.unit_price)
+        price = _money(0) if document.kind == DocumentKind.RFQ.value else _money(line.unit_price)
         amount = _money(qty * price)
         total += amount
         document.lines.append(
@@ -186,6 +209,15 @@ def _replace_lines(db: Session, document: PracticeDocument, lines: list[Document
 
 
 def _stamp_money(row: PracticeDocument, subtotal: Decimal, template, settings) -> None:
+    if row.kind == DocumentKind.RFQ.value:
+        row.vat_enabled = False
+        row.vat_rate = Decimal("0")
+        row.subtotal = _money(0)
+        row.vat_amount = _money(0)
+        row.amount = _money(0)
+        row.bank_snapshot = None
+        row.disclaimer_snapshot = template.disclaimer
+        return
     vat_on, rate = resolve_vat(settings)
     vat = _money(subtotal * rate / Decimal("100")) if vat_on else _money(0)
     row.vat_enabled = vat_on
@@ -355,7 +387,7 @@ def _trail(
 
 @router.get("/documents", response_model=list[DocumentOut])
 def list_documents(
-    kind: str | None = Query(default=None, pattern="^(quote|invoice)$"),
+    kind: str | None = Query(default=None, pattern="^(quote|invoice|rfq)$"),
     project_id: int | None = None,
     party_id: int | None = None,
     include_archived: bool = False,
@@ -377,16 +409,16 @@ def list_documents(
 
 @router.get("/documents/prepare", response_model=DocumentPrepareOut)
 def prepare_document(
-    kind: str = Query(pattern="^(quote|invoice)$"),
+    kind: str = Query(pattern="^(quote|invoice|rfq)$"),
     party_id: int | None = None,
     project_id: int | None = None,
     db: Session = Depends(get_db),
     profile: UserProfile = Depends(get_active_profile),
 ):
-    require_feature(db, profile.id, "quotes" if kind == "quote" else "invoices")
-    party = _party(db, profile.id, party_id)
+    _require_document_feature(db, profile.id, kind)
+    party = _assert_document_party(db, profile.id, kind, party_id)
     project = _project(db, profile.id, project_id)
-    if project and party is None and project.client:
+    if kind != DocumentKind.RFQ.value and project and party is None and project.client:
         party = project.client
     sales = (
         db.query(Ledger)
@@ -399,11 +431,13 @@ def prepare_document(
         .all()
     )
     default_led = next((l for l in sales if "sales" in l.name.lower()), sales[0] if sales else None)
-    title = project.name if project else (party.name if party else ("Quote" if kind == "quote" else "Invoice"))
+    title = project.name if project else (party.name if party else _kind_label(kind))
     issued = date.today()
     tmpl = get_or_create_template(db, profile.id, kind)
     settings = get_or_create_settings(db, profile.id)
     vat_on, vat_rate = resolve_vat(settings)
+    if kind == DocumentKind.RFQ.value:
+        vat_on, vat_rate = False, Decimal("0")
     logo_path, _src = resolve_logo_path(db, profile)
     return DocumentPrepareOut(
         kind=kind,
@@ -421,7 +455,7 @@ def prepare_document(
         vat_enabled=vat_on,
         vat_rate=vat_rate,
         has_logo=logo_path is not None,
-        bank=bank_dict(tmpl),
+        bank=None if kind == DocumentKind.RFQ.value else bank_dict(tmpl),
         disclaimer=tmpl.disclaimer,
     )
 
@@ -432,10 +466,10 @@ def create_document(
     db: Session = Depends(get_db),
     profile: UserProfile = Depends(get_active_profile),
 ):
-    require_feature(db, profile.id, "quotes" if body.kind == "quote" else "invoices")
+    _require_document_feature(db, profile.id, body.kind)
     if body.status not in _DOC_STATUSES:
         raise HTTPException(400, "Invalid document status")
-    party = _party(db, profile.id, body.party_id)
+    party = _assert_document_party(db, profile.id, body.kind, body.party_id)
     project = _project(db, profile.id, body.project_id)
     income_id = body.income_ledger_id
     if body.kind == DocumentKind.INVOICE.value:
@@ -487,7 +521,7 @@ def create_document(
         subtotal = _money(body.amount)
     _stamp_money(row, subtotal, tmpl, settings)
     if project:
-        label = "Quote" if body.kind == "quote" else "Invoice"
+        label = _kind_label(body.kind)
         _trail(
             db,
             profile.id,
@@ -495,7 +529,7 @@ def create_document(
             body.kind,
             f"{label} {row.number}",
             body.title.strip(),
-            row.amount,
+            None if body.kind == DocumentKind.RFQ.value else row.amount,
             document_id=row.id,
             occurred_on=row.issued_on,
         )
@@ -578,7 +612,7 @@ def document_pdf(
     )
     if not row:
         raise HTTPException(404, "Document not found")
-    require_feature(db, profile.id, "quotes" if row.kind == "quote" else "invoices")
+    _require_document_feature(db, profile.id, row.kind)
     from app.modules.practice.document_pdf import generate_document_pdf
 
     logo, _src = resolve_logo_path(db, profile)
@@ -602,7 +636,7 @@ def document_preview(
     db: Session = Depends(get_db),
     profile: UserProfile = Depends(get_active_profile),
 ):
-    """PNG pages of the quote/invoice template — shown in-app, no browser PDF plugin."""
+    """PNG pages of the quote/invoice/RFQ template — shown in-app, no browser PDF plugin."""
     import base64
 
     row = (
@@ -613,7 +647,7 @@ def document_preview(
     )
     if not row:
         raise HTTPException(404, "Document not found")
-    require_feature(db, profile.id, "quotes" if row.kind == "quote" else "invoices")
+    _require_document_feature(db, profile.id, row.kind)
     from app.modules.practice.document_pdf import generate_document_pdf, rasterize_pdf_pages
 
     logo, _src = resolve_logo_path(db, profile)
@@ -656,12 +690,12 @@ def update_document(
     )
     if not row:
         raise HTTPException(404, "Document not found")
-    require_feature(db, profile_id, "quotes" if row.kind == "quote" else "invoices")
+    _require_document_feature(db, profile_id, row.kind)
     data = body.model_dump(exclude_unset=True)
     if "status" in data and data["status"] is not None and data["status"] not in _DOC_STATUSES:
         raise HTTPException(400, "Invalid document status")
     if "party_id" in data:
-        _party(db, profile_id, data["party_id"])
+        _assert_document_party(db, profile_id, row.kind, data["party_id"])
     if "project_id" in data:
         _project(db, profile_id, data["project_id"])
     if "income_ledger_id" in data and data["income_ledger_id"] is not None:
@@ -692,7 +726,7 @@ def update_document(
     if row.party:
         row.client_snapshot = _client_card(row.party).model_dump()
     if row.project_id and row.project_id != old_project_id:
-        label = "Quote" if row.kind == "quote" else "Invoice"
+        label = _kind_label(row.kind)
         _trail(
             db,
             profile_id,
@@ -700,14 +734,16 @@ def update_document(
             row.kind,
             f"{label} {row.number}",
             row.title,
-            row.amount,
+            None if row.kind == DocumentKind.RFQ.value else row.amount,
             document_id=row.id,
             occurred_on=row.issued_on,
         )
     elif row.issued_on:
         db.query(PracticeEntry).filter(
             PracticeEntry.document_id == row.id,
-            PracticeEntry.entry_type.in_([EntryType.QUOTE.value, EntryType.INVOICE.value]),
+            PracticeEntry.entry_type.in_(
+                [EntryType.QUOTE.value, EntryType.INVOICE.value, EntryType.RFQ.value]
+            ),
         ).update(
             {PracticeEntry.occurred_on: row.issued_on},
             synchronize_session=False,

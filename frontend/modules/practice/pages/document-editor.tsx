@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ImagePlus, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, GripVertical, ImagePlus, Plus, Printer, Trash2 } from "lucide-react";
 import { api, type Ledger } from "@/lib/api";
-import { formatMoney } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,19 +18,32 @@ import { FeatureOffPage } from "@/modules/practice/pages/disabled";
 import { ClientPicker, partyToCard, tradingAsLine } from "@/modules/practice/pages/client-picker";
 import { ProductItemField } from "@/modules/practice/pages/product-item-field";
 import { PdfPreviewModal, type PreviewPage } from "@/modules/practice/pages/pdf-preview-modal";
-import type {
-  AddressCard,
-  BankSnapshot,
-  DocumentKind,
-  DocumentLine,
-  NoteBlock,
-  PracticeProduct,
+import {
+  documentKindLabel,
+  parseDocumentKind,
+  RFQ_EXPANSION,
+  type AddressCard,
+  type BankSnapshot,
+  type DocumentLine,
+  type NoteBlock,
+  type PracticeProduct,
 } from "@/modules/practice/lib/types";
 
 type NoteBlockView = NoteBlock & { id: string; url?: string };
+type EditorLine = DocumentLine & { rowId: string };
 
 function newId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function toEditorLine(line: Partial<DocumentLine> = {}): EditorLine {
+  return {
+    item: line.item || "",
+    description: line.description || "",
+    quantity: line.quantity ?? "1",
+    unit_price: line.unit_price ?? "0",
+    rowId: newId(),
+  };
 }
 
 function blocksFromNotes(notes: string | null | undefined, json?: NoteBlock[] | null): NoteBlockView[] {
@@ -70,6 +83,36 @@ function lineAmount(line: DocumentLine): number {
 /** Qty 0 = heading / note line: hide qty, rate, and line total on the sheet. */
 function isZeroQty(line: DocumentLine): boolean {
   return money(line.quantity) === 0;
+}
+
+function LineDragHandle({
+  disabled,
+  dragging,
+  onPointerDown,
+}: {
+  disabled?: boolean;
+  dragging?: boolean;
+  onPointerDown: (e: PointerEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      draggable={false}
+      disabled={disabled}
+      aria-label="Drag to reorder"
+      title="Drag to reorder"
+      onPointerDown={onPointerDown}
+      className={cn(
+        "flex h-9 w-6 shrink-0 touch-none items-center justify-center rounded text-muted-foreground",
+        "hover:bg-accent hover:text-foreground",
+        dragging ? "cursor-grabbing" : "cursor-grab",
+        "disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent"
+      )}
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  );
 }
 
 function LineText({
@@ -163,14 +206,15 @@ export function PracticeDocumentEditorPage() {
   const router = useRouter();
   const search = useSearchParams();
   const { flags, ready } = useModuleFlags();
-  const kind = (search.get("kind") === "invoice" ? "invoice" : "quote") as DocumentKind;
+  const kind = parseDocumentKind(search.get("kind"));
   const existingId = Number(search.get("id") || "") || null;
   const partyIdParam = Number(search.get("party_id") || "") || null;
   const projectIdParam = Number(search.get("project_id") || "") || null;
   const sourceQuoteId = Number(search.get("source_quote_id") || "") || null;
 
-  const enabled = kind === "quote" ? flags.quotes_enabled : flags.invoices_enabled;
-  const label = kind === "quote" ? "Quote" : "Invoice";
+  const isRfq = kind === "rfq";
+  const enabled = isRfq ? true : kind === "quote" ? flags.quotes_enabled : flags.invoices_enabled;
+  const label = documentKindLabel(kind);
 
   const [number, setNumber] = useState("");
   const [title, setTitle] = useState("");
@@ -182,9 +226,13 @@ export function PracticeDocumentEditorPage() {
   const [incomeLedgerId, setIncomeLedgerId] = useState("");
   const [issuer, setIssuer] = useState<AddressCard | null>(null);
   const [client, setClient] = useState<AddressCard | null>(null);
-  const [lines, setLines] = useState<DocumentLine[]>([
-    { item: "", description: "", quantity: "1", unit_price: "0" },
-  ]);
+  const [lines, setLines] = useState<EditorLine[]>([toEditorLine()]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const linesRef = useRef(lines);
+  const draggingIdRef = useRef<string | null>(null);
+  const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  linesRef.current = lines;
+  draggingIdRef.current = draggingId;
   const [products, setProducts] = useState<PracticeProduct[]>([]);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [currency, setCurrency] = useState("ZAR");
@@ -247,13 +295,15 @@ export function PracticeDocumentEditorPage() {
           setDisclaimer(doc.disclaimer || null);
           setLines(
             doc.lines?.length
-              ? doc.lines.map((l) => ({
-                  item: l.item || "",
-                  description: l.description,
-                  quantity: String(l.quantity),
-                  unit_price: String(l.unit_price),
-                }))
-              : [{ item: "", description: "", quantity: "1", unit_price: "0" }]
+              ? doc.lines.map((l) =>
+                  toEditorLine({
+                    item: l.item || "",
+                    description: l.description,
+                    quantity: String(l.quantity),
+                    unit_price: String(l.unit_price),
+                  })
+                )
+              : [toEditorLine()]
           );
         } else {
           const prep = await practiceApi.documents.prepare(kind, {
@@ -286,12 +336,14 @@ export function PracticeDocumentEditorPage() {
             setClient(quote.client || prep.client);
             if (quote.lines?.length) {
               setLines(
-                quote.lines.map((l) => ({
-                  item: l.item || "",
-                  description: l.description,
-                  quantity: String(l.quantity),
-                  unit_price: String(l.unit_price),
-                }))
+                quote.lines.map((l) =>
+                  toEditorLine({
+                    item: l.item || "",
+                    description: l.description,
+                    quantity: String(l.quantity),
+                    unit_price: String(l.unit_price),
+                  })
+                )
               );
             }
           }
@@ -353,6 +405,74 @@ export function PracticeDocumentEditorPage() {
     return () => window.removeEventListener("focus", onFocus);
   }, [ready, enabled]);
 
+  useEffect(() => {
+    if (!draggingId) return;
+    function rowIndexFromY(clientY: number): number {
+      const els = tbodyRef.current?.querySelectorAll<HTMLElement>("[data-line-row]");
+      if (!els?.length) return -1;
+      const first = els[0].getBoundingClientRect();
+      if (clientY < first.top) return 0;
+      const last = els[els.length - 1].getBoundingClientRect();
+      if (clientY > last.bottom) return els.length - 1;
+      for (let i = 0; i < els.length; i++) {
+        const r = els[i].getBoundingClientRect();
+        if (clientY >= r.top && clientY <= r.bottom) return i;
+      }
+      let best = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < els.length; i++) {
+        const r = els[i].getBoundingClientRect();
+        const mid = r.top + r.height / 2;
+        const d = Math.abs(clientY - mid);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+      return best;
+    }
+    function onMove(e: globalThis.PointerEvent) {
+      const dragging = draggingIdRef.current;
+      if (!dragging) return;
+      const current = linesRef.current;
+      const from = current.findIndex((l) => l.rowId === dragging);
+      if (from < 0) return;
+      const over = rowIndexFromY(e.clientY);
+      if (over < 0 || over === from) return;
+      const el = tbodyRef.current?.querySelectorAll<HTMLElement>("[data-line-row]")[over];
+      if (!el) return;
+      const box = el.getBoundingClientRect();
+      const midY = box.top + box.height / 2;
+      if (over < from && e.clientY > midY) return;
+      if (over > from && e.clientY < midY) return;
+      setLines((rows) => {
+        const i = rows.findIndex((l) => l.rowId === dragging);
+        if (i < 0 || i === over) return rows;
+        const next = rows.slice();
+        const [item] = next.splice(i, 1);
+        next.splice(over, 0, item);
+        return next;
+      });
+    }
+    function onUp() {
+      setDraggingId(null);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "grabbing";
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
+    };
+  }, [draggingId]);
+
   if (ready && !enabled) {
     return <FeatureOffPage title={`${label}s`} />;
   }
@@ -361,9 +481,16 @@ export function PracticeDocumentEditorPage() {
     setLines((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
+  function startLineDrag(e: PointerEvent<HTMLButtonElement>, rowId: string) {
+    if (e.button !== 0 || lines.length < 2) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingId(rowId);
+  }
+
   function addLineItem() {
     const nextIndex = lines.length;
-    setLines((rows) => [...rows, { item: "", description: "", quantity: "1", unit_price: "0" }]);
+    setLines((rows) => [...rows, toEditorLine()]);
     window.requestAnimationFrame(() => {
       const el = document.querySelector<HTMLTextAreaElement>(`textarea[data-line-item="${nextIndex}"]`);
       el?.focus();
@@ -436,7 +563,9 @@ export function PracticeDocumentEditorPage() {
 
   function backHref(): string {
     if (projectId) return `/practice/file?id=${projectId}`;
+    if (isRfq && partyId) return `/practice/suppliers/file?id=${partyId}`;
     if (partyId) return `/practice/clients/file?id=${partyId}&tab=${kind === "quote" ? "quotes" : "invoices"}`;
+    if (isRfq) return "/practice/suppliers";
     return kind === "quote" ? "/practice/quotes" : "/practice/invoices";
   }
 
@@ -446,7 +575,7 @@ export function PracticeDocumentEditorPage() {
         item: (l.item || "").trim(),
         description: (l.description || "").trim(),
         quantity: money(l.quantity),
-        unit_price: money(l.unit_price),
+        unit_price: isRfq ? 0 : money(l.unit_price),
       }))
       .filter((l) => l.item || l.description);
     if (cleaned.length === 0) {
@@ -595,7 +724,7 @@ export function PracticeDocumentEditorPage() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Card className="min-w-0 section-panel neon-lime border-2">
+      <Card className={`min-w-0 section-panel border-2 ${isRfq ? "neon-violet" : "neon-lime"}`}>
         <CardContent className="min-w-0 space-y-6 pt-6">
           <table className="doc-sheet-top">
             <colgroup>
@@ -629,6 +758,9 @@ export function PracticeDocumentEditorPage() {
                 </td>
                 <td style={{ verticalAlign: "middle", textAlign: "center" }}>
                   <h1 className="text-2xl font-semibold uppercase tracking-[0.28em]">{label}</h1>
+                  {isRfq && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">{RFQ_EXPANSION}</p>
+                  )}
                   <p className="mt-1 text-sm tabular-nums text-muted-foreground">
                     {number || "Assigning number…"}
                   </p>
@@ -657,9 +789,10 @@ export function PracticeDocumentEditorPage() {
                 <td>
                   <div className="space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Bill to
+                      {isRfq ? "To" : "Bill to"}
                     </p>
                     <ClientPicker
+                      kind={isRfq ? "supplier" : "client"}
                       value={partyId}
                       selectedName={client?.name || null}
                       selectedTradingName={client?.trading_name || null}
@@ -673,7 +806,9 @@ export function PracticeDocumentEditorPage() {
                       <AddressBlock card={client} />
                     ) : (
                       <p className="text-xs text-muted-foreground">
-                        Search and select a client. Their address, VAT and registration pull through.
+                        {isRfq
+                          ? "Search and select a supplier. Their address, VAT and registration pull through."
+                          : "Search and select a client. Their address, VAT and registration pull through."}
                       </p>
                     )}
                   </div>
@@ -699,26 +834,45 @@ export function PracticeDocumentEditorPage() {
           <div className="w-full min-w-0 overflow-hidden">
             <table className="w-full table-fixed border-collapse text-sm">
               <colgroup>
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "30%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "20%" }} />
+                <col style={{ width: "28px" }} />
+                <col style={{ width: isRfq ? "28%" : "18%" }} />
+                <col style={{ width: isRfq ? "48%" : "30%" }} />
+                <col style={{ width: isRfq ? "12%" : "10%" }} />
+                {!isRfq && <col style={{ width: "18%" }} />}
+                <col style={{ width: isRfq ? "12%" : "18%" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-border text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="px-0 py-2" aria-hidden />
                   <th className="px-1 py-2 font-semibold">Item</th>
                   <th className="px-1 py-2 font-semibold">Description</th>
                   <th className="px-1 py-2 font-semibold">Qty</th>
-                  <th className="px-1 py-2 font-semibold">Rate</th>
-                  <th className="px-1 py-2 text-right font-semibold">Line total ex VAT</th>
+                  {!isRfq && <th className="px-1 py-2 font-semibold">Rate</th>}
+                  <th className={`px-1 py-2 font-semibold ${isRfq ? "" : "text-right"}`}>
+                    {isRfq ? "" : "Line total ex VAT"}
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody ref={tbodyRef}>
                 {lines.map((line, i) => {
                   const hideMoney = isZeroQty(line);
+                  const isDragging = draggingId === line.rowId;
                   return (
-                    <tr key={i} className="border-b border-border/60 align-top">
+                    <tr
+                      key={line.rowId}
+                      data-line-row={line.rowId}
+                      aria-grabbed={isDragging}
+                      className={cn(
+                        "border-b border-border/60 align-top",
+                        isDragging && "bg-accent/60 opacity-70"
+                      )}
+                    >
+                      <td className="w-7 px-0 py-1.5 align-top">
+                        <LineDragHandle
+                          dragging={isDragging}
+                          onPointerDown={(e) => startLineDrag(e, line.rowId)}
+                        />
+                      </td>
                       <td className="min-w-0 px-1 py-1.5 align-top">
                         <ProductItemField
                           itemIndex={i}
@@ -729,7 +883,7 @@ export function PracticeDocumentEditorPage() {
                             setLine(i, {
                               item: item.name,
                               description: item.description || "",
-                              unit_price: String(item.retail_price ?? "0"),
+                              unit_price: isRfq ? "0" : String(item.retail_price ?? "0"),
                             })
                           }
                           onKeyDown={onLineKeyDown}
@@ -756,6 +910,7 @@ export function PracticeDocumentEditorPage() {
                           aria-label="Quantity"
                         />
                       </td>
+                      {!isRfq && (
                       <td className="min-w-0 px-1 py-1.5">
                         {hideMoney ? (
                           <div className="h-9" aria-hidden />
@@ -772,11 +927,14 @@ export function PracticeDocumentEditorPage() {
                           />
                         )}
                       </td>
+                      )}
                       <td className="min-w-0 px-1 py-1.5">
                         <div className="flex items-center justify-end gap-0.5">
+                          {!isRfq && (
                           <span className="min-w-0 truncate text-right tabular-nums">
                             {hideMoney ? "" : formatMoney(lineAmount(line), currency)}
                           </span>
+                          )}
                           <Button
                             type="button"
                             size="icon"
@@ -807,6 +965,7 @@ export function PracticeDocumentEditorPage() {
             </Button>
           </div>
 
+          {!isRfq && (
           <div className="flex justify-end">
             <div className="min-w-[240px] space-y-1 text-right text-sm">
               {vatEnabled ? (
@@ -832,8 +991,9 @@ export function PracticeDocumentEditorPage() {
               )}
             </div>
           </div>
+          )}
 
-          {(bank?.bank_name || bank?.bank_account_number) && (
+          {!isRfq && (bank?.bank_name || bank?.bank_account_number) && (
             <div className="rounded-xl border border-border/80 bg-muted/30 px-4 py-3 text-sm">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Bank details

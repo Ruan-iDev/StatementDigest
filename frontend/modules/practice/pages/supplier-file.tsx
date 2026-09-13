@@ -2,29 +2,43 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Plus } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { practiceApi } from "@/modules/practice/lib/api";
 import { tradingAsLine } from "@/modules/practice/pages/client-picker";
 import { PartyFormModal } from "@/modules/practice/pages/party-form";
 import { openPdfPreview } from "@/modules/practice/lib/pdf-preview";
-import type { PartyWrite, PracticeParty, SupplierStatement } from "@/modules/practice/lib/types";
+import {
+  documentEditorHref,
+  RFQ_EXPANSION,
+  type PartyWrite,
+  type PracticeDocument,
+  type PracticeParty,
+  type SupplierStatement,
+} from "@/modules/practice/lib/types";
 
 export function PracticeSupplierFilePage() {
+  const router = useRouter();
   const search = useSearchParams();
   const id = Number(search.get("id") || "");
   const [data, setData] = useState<SupplierStatement | null>(null);
+  const [rfqs, setRfqs] = useState<PracticeDocument[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
 
   const validId = Number.isFinite(id) && id > 0;
 
   async function load() {
-    const stmt = await practiceApi.parties.statement(id);
+    const [stmt, docs] = await Promise.all([
+      practiceApi.parties.statement(id),
+      practiceApi.documents.list("rfq", undefined, id).catch(() => [] as PracticeDocument[]),
+    ]);
     setData(stmt);
+    setRfqs(docs);
   }
 
   useEffect(() => {
@@ -74,7 +88,19 @@ export function PracticeSupplierFilePage() {
             </p>
           </div>
           {party && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col items-end gap-0.5">
+                <Button
+                  type="button"
+                  onClick={() =>
+                    router.push(documentEditorHref({ kind: "rfq", partyId: party.id }))
+                  }
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  New RFQ
+                </Button>
+                <span className="text-[11px] text-muted-foreground">{RFQ_EXPANSION}</span>
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -112,6 +138,51 @@ export function PracticeSupplierFilePage() {
             {data ? `${data.totals.count} ${data.totals.count === 1 ? "expense" : "expenses"}` : ""}
           </p>
         </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle>RFQs</CardTitle>
+              <CardDescription>
+                Requests sent to this supplier — item, description and quantity only.
+              </CardDescription>
+            </div>
+            <span className="text-[11px] text-muted-foreground">{RFQ_EXPANSION}</span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {rfqs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No RFQs yet. Create one to ask this supplier for prices.
+            </p>
+          ) : (
+            rfqs.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-transparent px-1 py-2 text-left text-sm hover:border-[hsl(var(--neon-violet)/0.45)]"
+                onClick={() => router.push(documentEditorHref({ kind: "rfq", id: row.id }))}
+              >
+                <span className="min-w-0">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium tabular-nums">{row.number}</span>
+                    <Badge variant="outline">{row.status}</Badge>
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {[row.title, row.project_name, row.issued_on ? formatDate(row.issued_on) : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {row.lines?.length || 0} {(row.lines?.length || 0) === 1 ? "item" : "items"}
+                </span>
+              </button>
+            ))
+          )}
+        </CardContent>
       </Card>
 
       <Card>

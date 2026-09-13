@@ -201,6 +201,9 @@ export function itemIsActive(item: ModuleNavItem, pathname: string): boolean {
   if (item.href === "/practice/invoices") {
     return pathname.startsWith("/practice/invoices") || pathname.includes("kind=invoice");
   }
+  if (item.href === "/practice/suppliers") {
+    return pathname.startsWith("/practice/suppliers") || pathname.includes("kind=rfq");
+  }
   if (item.href === "/reports") {
     return pathname === "/reports" || pathname.startsWith("/reports/");
   }

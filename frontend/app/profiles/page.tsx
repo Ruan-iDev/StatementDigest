@@ -10,6 +10,7 @@ import {
   FolderOpen,
   HardDrive,
   ImagePlus,
+  KeyRound,
   Plus,
   ShieldCheck,
   Trash2,
@@ -74,6 +75,12 @@ export default function MyProfilePage() {
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
 
+  const [resetTarget, setResetTarget] = useState<UserProfile | null>(null);
+  const [resetUser, setResetUser] = useState("");
+  const [resetPw, setResetPw] = useState("");
+  const [resetPw2, setResetPw2] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+
   function openCreateProfile() {
     setNewName("");
     setNewType("individual");
@@ -94,6 +101,40 @@ export default function MyProfilePage() {
   function closeCreateProfile() {
     if (creating) return;
     setCreateOpen(false);
+  }
+
+  async function saveWorkspaceLoginReset() {
+    if (!resetTarget) return;
+    const user = resetUser.trim();
+    if (user.length < 2) {
+      setError("Workspace username must be at least 2 characters.");
+      return;
+    }
+    if (!resetPw) {
+      setError("Enter a new workspace password.");
+      return;
+    }
+    if (resetPw !== resetPw2) {
+      setError("New password and confirmation do not match.");
+      return;
+    }
+    setResetBusy(true);
+    try {
+      setError(null);
+      await api.profiles.resetWorkspaceLogin(resetTarget.id, {
+        workspace_username: user,
+        password: resetPw,
+      });
+      setMessage(`Workspace login updated for “${resetTarget.name}”. Username: ${user}`);
+      setResetTarget(null);
+      setResetPw("");
+      setResetPw2("");
+      await refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not reset workspace login");
+    } finally {
+      setResetBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -587,6 +628,23 @@ export default function MyProfilePage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {(p.has_password || p.workspace_username) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setResetTarget(p);
+                        setResetUser(p.workspace_username || "");
+                        setResetPw("");
+                        setResetPw2("");
+                        setError(null);
+                        setMessage(null);
+                      }}
+                    >
+                      <KeyRound className="mr-1 h-3.5 w-3.5" />
+                      Reset login
+                    </Button>
+                  )}
                   {!p.is_active && (
                     <Button
                       size="sm"
@@ -1105,6 +1163,62 @@ export default function MyProfilePage() {
             </Button>
             <Button onClick={() => void createProfile()} disabled={creating}>
               {creating ? "Creating…" : "Create profile & switch"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(resetTarget)}
+        onClose={() => {
+          if (resetBusy) return;
+          setResetTarget(null);
+        }}
+        title={resetTarget ? `Reset login — ${resetTarget.name}` : "Reset workspace login"}
+        description="You are already signed into LedgerFlow, so you can set a new workspace username and password without the old one. There is no email recovery."
+      >
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="reset-ws-user">Workspace username</Label>
+            <Input
+              id="reset-ws-user"
+              autoComplete="off"
+              value={resetUser}
+              onChange={(e) => setResetUser(e.target.value)}
+              placeholder="Username used when switching into this profile"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="reset-ws-pw">New workspace password</Label>
+            <Input
+              id="reset-ws-pw"
+              type="password"
+              autoComplete="new-password"
+              value={resetPw}
+              onChange={(e) => setResetPw(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="reset-ws-pw2">Confirm password</Label>
+            <Input
+              id="reset-ws-pw2"
+              type="password"
+              autoComplete="new-password"
+              value={resetPw2}
+              onChange={(e) => setResetPw2(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={resetBusy}
+              onClick={() => setResetTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={resetBusy} onClick={() => void saveWorkspaceLoginReset()}>
+              {resetBusy ? "Saving…" : "Save new login"}
             </Button>
           </div>
         </div>

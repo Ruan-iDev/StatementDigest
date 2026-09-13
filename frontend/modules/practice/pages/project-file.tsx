@@ -22,6 +22,7 @@ import { ClientPicker } from "@/modules/practice/pages/client-picker";
 import {
   clientFileHref,
   documentEditorHref,
+  RFQ_EXPANSION,
   supplierFileHref,
   type DocumentKind,
   type EntryType,
@@ -47,6 +48,7 @@ const ENTRY_LABEL: Record<EntryType, string> = {
   note: "Note",
   quote: "Quote",
   invoice: "Invoice",
+  rfq: "RFQ",
   expense: "Expense",
   payment: "Payment",
   file: "File",
@@ -56,7 +58,7 @@ const ENTRY_LABEL: Record<EntryType, string> = {
   wage: "Wages",
 };
 
-type AddKind = "note" | "quote" | "invoice" | "expense" | "payment" | "meeting" | "wage";
+type AddKind = "note" | "quote" | "invoice" | "rfq" | "expense" | "payment" | "meeting" | "wage";
 
 type WageLineDraft = { description: string; amount: string };
 
@@ -278,6 +280,7 @@ export function PracticeProjectFilePage() {
     { type: "note", label: "Notes", show: true },
     { type: "quote", label: "Quote", show: flags.quotes_enabled },
     { type: "invoice", label: "Invoice", show: flags.invoices_enabled },
+    { type: "rfq", label: "RFQ", show: true },
     { type: "expense", label: "Expense", show: true },
     { type: "wage", label: "Wages", show: true },
     { type: "payment", label: "Received payment", show: true },
@@ -349,7 +352,7 @@ export function PracticeProjectFilePage() {
       setWageAdditions([]);
       setWageNote("");
     }
-    if ((type === "quote" || type === "invoice") && project) {
+    if ((type === "quote" || type === "invoice" || type === "rfq") && project) {
       setLinkQuery("");
       setLinkBusy(true);
       practiceApi.documents
@@ -446,7 +449,7 @@ export function PracticeProjectFilePage() {
     router.push(
       documentEditorHref({
         kind,
-        partyId: project.client_id,
+        partyId: kind === "rfq" ? null : project.client_id,
         projectId: project.id,
       })
     );
@@ -995,7 +998,10 @@ export function PracticeProjectFilePage() {
               <li key={entry.id}>
                 <Card
                   className={
-                    entry.document_id && (entry.entry_type === "quote" || entry.entry_type === "invoice")
+                    entry.document_id &&
+                    (entry.entry_type === "quote" ||
+                      entry.entry_type === "invoice" ||
+                      entry.entry_type === "rfq")
                       ? "cursor-pointer transition-colors hover:border-[hsl(var(--neon-cyan)/0.45)]"
                       : isEditableTrail(entry)
                         ? "cursor-pointer transition-colors hover:border-[hsl(var(--neon-amber)/0.45)]"
@@ -1003,7 +1009,11 @@ export function PracticeProjectFilePage() {
                   }
                   onClick={() => {
                     if (!entry.document_id) return;
-                    if (entry.entry_type === "quote" || entry.entry_type === "invoice") {
+                    if (
+                      entry.entry_type === "quote" ||
+                      entry.entry_type === "invoice" ||
+                      entry.entry_type === "rfq"
+                    ) {
                       router.push(documentEditorHref({ kind: entry.entry_type, id: entry.document_id }));
                     }
                   }}
@@ -1080,7 +1090,7 @@ export function PracticeProjectFilePage() {
         description={
           editingEntry
             ? "Correct what was recorded, or remove it from the trail and add it again. Quotes and invoices still open in their own editor."
-            : "Notes, meeting, quote, invoice, expense, or a received payment. Date each one to when it happened."
+            : "Notes, meeting, quote, invoice, RFQ, expense, or a received payment. Date each one to when it happened."
         }
       >
         <div className="space-y-4">
@@ -1097,6 +1107,15 @@ export function PracticeProjectFilePage() {
                   onClick={() => openAdd(opt.type)}
                 >
                   {opt.label}
+                  {opt.type === "rfq" && (
+                    <span
+                      className={`ml-1 text-[10px] font-normal ${
+                        addType === "rfq" ? "text-primary-foreground/70" : "text-muted-foreground"
+                      }`}
+                    >
+                      {RFQ_EXPANSION}
+                    </span>
+                  )}
                 </Button>
               ))}
           </div>
@@ -1347,18 +1366,27 @@ export function PracticeProjectFilePage() {
             </div>
           )}
 
-          {(addType === "quote" || addType === "invoice") && (
+          {(addType === "quote" || addType === "invoice" || addType === "rfq") && (
             <div className="space-y-3">
+              {addType === "rfq" && (
+                <p className="text-[11px] text-muted-foreground">
+                  {RFQ_EXPANSION} — item, description and quantity only. No prices.
+                </p>
+              )}
               <Button type="button" onClick={() => startNewDocument(addType)}>
                 <Plus className="mr-1 h-4 w-4" />
-                New {addType}
+                New {addType === "rfq" ? "RFQ" : addType}
               </Button>
               <div className="space-y-1.5">
-                <Label>Or link an existing {addType}</Label>
+                <Label>Or link an existing {addType === "rfq" ? "RFQ" : addType}</Label>
                 <Input
                   value={linkQuery}
                   onChange={(e) => setLinkQuery(e.target.value)}
-                  placeholder="Search number, reference, client…"
+                  placeholder={
+                    addType === "rfq"
+                      ? "Search number, reference, supplier…"
+                      : "Search number, reference, client…"
+                  }
                 />
               </div>
               <ul className="max-h-56 space-y-1 overflow-y-auto">
@@ -1391,15 +1419,17 @@ export function PracticeProjectFilePage() {
                                 .join(" · ")}
                             </span>
                           </span>
-                          <span className="shrink-0 tabular-nums text-xs font-semibold">
-                            {formatMoney(d.amount)}
-                          </span>
+                          {addType !== "rfq" && (
+                            <span className="shrink-0 tabular-nums text-xs font-semibold">
+                              {formatMoney(d.amount)}
+                            </span>
+                          )}
                         </button>
                       </li>
                     ))}
                 {!linkBusy && linkDocs.length === 0 && (
                   <li className="text-xs text-muted-foreground">
-                    No spare {addType}s to link. Create a new one.
+                    No spare {addType === "rfq" ? "RFQs" : `${addType}s`} to link. Create a new one.
                   </li>
                 )}
               </ul>

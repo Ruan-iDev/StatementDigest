@@ -1,7 +1,7 @@
 {
   "name": "ledgerflow",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.1.1",
 
   "description": "LedgerFlow — local-first personal finance (bank statements → ledgers → reports)",
   "scripts": {

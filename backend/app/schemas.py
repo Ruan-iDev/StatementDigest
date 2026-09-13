@@ -94,6 +94,17 @@ class UserProfileSwitch(BaseModel):
     password: Optional[str] = Field(None, max_length=1024)
 
 
+class WorkspaceLoginReset(BaseModel):
+    """Set a new workspace username/password. Does not need the old password.
+
+    Recovery is local: you must already be signed into LedgerFlow (app login).
+    There is no email reset.
+    """
+
+    workspace_username: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=1, max_length=1024)
+
+
 # ── Settings ──────────────────────────────────────────────────────────────
 
 

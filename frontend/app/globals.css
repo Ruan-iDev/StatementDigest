@@ -283,13 +283,21 @@
 }
 
 @layer components {
-  /* Electron frameless window: allow dragging the custom title bar */
+  /* Electron frameless window: title bar is draggable; everything you type/click is not.
+     Native drag hit-testing ignores DOM z-index, so overlays over the strip must opt out. */
   .desktop-titlebar {
     -webkit-app-region: drag;
     app-region: drag;
   }
-  .desktop-titlebar .desktop-no-drag,
-  .desktop-titlebar button {
+  .desktop-no-drag,
+  .desktop-titlebar button,
+  input,
+  textarea,
+  select,
+  button,
+  a,
+  [role="dialog"],
+  [role="dialog"] * {
     -webkit-app-region: no-drag;
     app-region: no-drag;
   }

@@ -56,8 +56,9 @@ export function ChangePasswordCard() {
       <CardHeader>
         <CardTitle>Change login password</CardTitle>
         <CardDescription>
-          You must enter your current password. There is no email recovery — lost passwords lock the
-          account forever.
+          This is the password that opens LedgerFlow (app login), not a workspace unlock. Enter your
+          current password to change it. There is no email reset. Extra profile unlocks are reset
+          with <strong>Reset login</strong> on the profile list above.
         </CardDescription>
       </CardHeader>
       <CardContent>

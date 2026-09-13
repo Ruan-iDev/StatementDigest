@@ -8,6 +8,7 @@ export type EntryType =
   | "note"
   | "quote"
   | "invoice"
+  | "rfq"
   | "expense"
   | "file"
   | "status"
@@ -16,7 +17,20 @@ export type EntryType =
   | "meeting"
   | "wage";
 
-export type DocumentKind = "quote" | "invoice";
+export type DocumentKind = "quote" | "invoice" | "rfq";
+
+export const RFQ_EXPANSION = "Request for Quote";
+
+export function parseDocumentKind(raw: string | null | undefined): DocumentKind {
+  if (raw === "invoice" || raw === "rfq") return raw;
+  return "quote";
+}
+
+export function documentKindLabel(kind: DocumentKind): string {
+  if (kind === "invoice") return "Invoice";
+  if (kind === "rfq") return "RFQ";
+  return "Quote";
+}
 
 export type DocumentStatus =
   | "draft"

@@ -59,6 +59,37 @@ _TX_LINE_GOLD = re.compile(
     re.IGNORECASE,
 )
 
+# Description is sometimes an image (not text). Then the line is only date + amounts:
+#   18 Mar 0.00 32,763.99Cr 80.00     ← amount 0, balance, accrued charges (memo)
+#   18 Mar 49.00 32,714.99Cr          ← #Monthly Account Fee
+#   18 Mar 121.04 32,593.95Cr         ← #Service Fees
+_TX_LINE_GOLD_NODESC = re.compile(
+    r"^(?P<day>\d{1,2})\s+"
+    r"(?P<mon>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+    r"(?P<amount>\d{1,3}(?:,\d{3})*\.\d{2}(?:Cr|Dr)?)\s+"
+    r"(?P<balance>\d{1,3}(?:,\d{3})*\.\d{2}(?:Cr|Dr)?)"
+    r"(?:\s+(?P<charges>\d{1,3}(?:,\d{3})*\.\d{2}))?"
+    r"\s*$",
+    re.IGNORECASE,
+)
+
+_GOLD_MONEY_TOKEN = re.compile(r"^\d{1,3}(?:,\d{3})*\.\d{2}(?:Cr|Dr)?$", re.IGNORECASE)
+
+# Gold Business draws fee descriptions as imagemasks, so extracted text is empty.
+# Keep the wording printed on the statement — do not substitute the allocation
+# ledger name (bank fees/charges). R49.00 is the Gold monthly account fee on
+# verified statements; other posted empty-desc debits are service fees.
+_GOLD_MONTHLY_ACCOUNT_FEE = Decimal("49.00")
+_GOLD_DESC_MONTHLY_ACCOUNT_FEE = "#Monthly Account Fee"
+_GOLD_DESC_SERVICE_FEES = "#Service Fees"
+
+
+def _gold_image_fee_description(amount: Decimal) -> str:
+    if abs(amount) == _GOLD_MONTHLY_ACCOUNT_FEE:
+        return _GOLD_DESC_MONTHLY_ACCOUNT_FEE
+    return _GOLD_DESC_SERVICE_FEES
+
+
 _PERIOD_RE_GOLD = re.compile(
     r"Statement\s+Period\s*:?\s*"
     r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})"
@@ -245,25 +276,52 @@ def parse_fnb_gold_business_text(
             continue
         if "transactions in" in low and "rand" in low:
             continue
-        m = _TX_LINE_GOLD.match(line)
-        if not m:
-            continue
 
-        desc = (m.group("desc") or "").strip()
+        desc = ""
+        amt_raw = bal_raw = chg_raw = None
+        day = mon = None
+        m = _TX_LINE_GOLD.match(line)
+        if m:
+            desc = (m.group("desc") or "").strip()
+            amt_raw = m.group("amount")
+            bal_raw = m.group("balance")
+            chg_raw = m.group("charges")
+            day, mon = m.group("day"), m.group("mon")
+            # Wrapped/image description: parser ate "0.00" as desc and the
+            # running Cr balance as amount (looks like a huge inflow).
+            if _GOLD_MONEY_TOKEN.match(desc):
+                chg_raw = bal_raw
+                bal_raw = amt_raw
+                amt_raw = desc
+                desc = ""
+        else:
+            m = _TX_LINE_GOLD_NODESC.match(line)
+            if not m:
+                continue
+            amt_raw = m.group("amount")
+            bal_raw = m.group("balance")
+            chg_raw = m.group("charges")
+            day, mon = m.group("day"), m.group("mon")
+
         if _is_balance_row(desc, cal):
             continue
         if desc.lower() in ("opening balance", "closing balance"):
             continue
 
         try:
-            tx_date = _parse_day_mon(m.group("day"), m.group("mon"), year)
-            amount = apply_amount_style(m.group("amount"), style)
-            balance = _balance_from_suffix(m.group("balance") or "")
+            tx_date = _parse_day_mon(day, mon, year)
+            amount = apply_amount_style(amt_raw, style)
+            balance = _balance_from_suffix(bal_raw or "")
         except (ValueError, TypeError):
             continue
 
-        if amount == 0 and not desc:
+        # Accrued Bank Charges column does not post — R0.00 + last-column fee
+        # is a memo. Following empty-desc posted debits keep statement labels.
+        if amount == 0:
             continue
+
+        if not desc:
+            desc = _gold_image_fee_description(amount)
 
         txs.append(
             ParsedTransaction(

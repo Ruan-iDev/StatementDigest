@@ -12,6 +12,7 @@ import { useModuleFlags } from "@/modules/practice/flags-provider";
 import {
   clientFileHref,
   documentEditorHref,
+  RFQ_EXPANSION,
   supplierFileHref,
   type PartyKind,
   type PartyWrite,
@@ -183,6 +184,20 @@ export function PracticePartiesPage({ kind }: Props) {
                       onClick={() => router.push(documentEditorHref({ kind: "invoice", partyId: row.id }))}
                     >
                       Invoice
+                    </Button>
+                  )}
+                  {!isClient && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      title={RFQ_EXPANSION}
+                      onClick={() => router.push(documentEditorHref({ kind: "rfq", partyId: row.id }))}
+                    >
+                      RFQ
+                      <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                        {RFQ_EXPANSION}
+                      </span>
                     </Button>
                   )}
                   {!isClient && flags.projects_enabled && (
