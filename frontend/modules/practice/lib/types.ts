@@ -41,6 +41,21 @@ export type DocumentStatus =
   | "paid"
   | "void";
 
+const DOCUMENT_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  accepted: "Accepted",
+  declined: "Declined",
+  invoiced: "Invoiced",
+  paid: "Paid",
+  void: "Void",
+};
+
+export function documentStatusLabel(status: string | null | undefined): string {
+  if (!status) return "";
+  return DOCUMENT_STATUS_LABEL[status] || status;
+}
+
 export type PracticeFlags = {
   quotes_enabled: boolean;
   invoices_enabled: boolean;

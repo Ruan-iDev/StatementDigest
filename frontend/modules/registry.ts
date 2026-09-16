@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Archive,
   BookOpen,
   FileBarChart,
   FileText,
@@ -28,7 +29,7 @@ export type ModuleNavItem = {
   match?: string;
 };
 
-export type AppModuleId = "ledger-flow" | "work-flow";
+export type AppModuleId = "ledger-flow" | "work-flow" | "cabinet-flow";
 
 export type AppModule = {
   id: AppModuleId;
@@ -158,7 +159,18 @@ export const WORK_FLOW: AppModule = {
   ],
 };
 
-export const APP_MODULES: AppModule[] = [LEDGER_FLOW, WORK_FLOW];
+export const CABINET_FLOW: AppModule = {
+  id: "cabinet-flow",
+  name: "Cabinet Flow",
+  subtitle: "Coming soon",
+  description: "Next module — brief still to come.",
+  href: "/cabinet",
+  accent: "cyan",
+  icon: Archive,
+  items: [],
+};
+
+export const APP_MODULES: AppModule[] = [LEDGER_FLOW, WORK_FLOW, CABINET_FLOW];
 
 const LEDGER_NESTED = ["/profiles", "/ledgers", "/rules", "/bank-profiles"];
 
@@ -166,13 +178,19 @@ export function isWorkFlowPath(pathname: string): boolean {
   return pathname === "/practice" || pathname.startsWith("/practice/");
 }
 
+export function isCabinetFlowPath(pathname: string): boolean {
+  return pathname === "/cabinet" || pathname.startsWith("/cabinet/");
+}
+
 export function isLedgerFlowPath(pathname: string): boolean {
   if (pathname === "/terms" || pathname.startsWith("/terms/")) return false;
   if (isWorkFlowPath(pathname)) return false;
+  if (isCabinetFlowPath(pathname)) return false;
   return true;
 }
 
 export function moduleForPath(pathname: string): AppModule | null {
+  if (isCabinetFlowPath(pathname)) return CABINET_FLOW;
   if (isWorkFlowPath(pathname)) return WORK_FLOW;
   if (isLedgerFlowPath(pathname)) return LEDGER_FLOW;
   return null;

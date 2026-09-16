@@ -307,6 +307,17 @@ class InvoiceFromQuote(BaseModel):
     notes: Optional[str] = None
 
 
+class InvoicePaymentReceived(BaseModel):
+    amount: Optional[Decimal] = None
+    occurred_on: Optional[date] = None
+    method: Optional[str] = None
+    note: Optional[str] = None
+
+
+class DocumentBatchIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=50)
+
+
 class DocumentOut(ORMModel):
     id: int
     kind: str

@@ -144,6 +144,35 @@ def _card_lines(card: Optional[dict]) -> list[str]:
     return out
 
 
+def invoice_is_paid(doc) -> bool:
+    return getattr(doc, "kind", None) == "invoice" and getattr(doc, "status", None) == "paid"
+
+
+def _draw_paid_stamp(canvas, _doc) -> None:
+    """Red rubber-stamp overlay: PAID / Thank you. Drawn on every page."""
+    page_w, page_h = A4
+    canvas.saveState()
+    canvas.translate(page_w * 0.58, page_h * 0.42)
+    canvas.rotate(18)
+    red = colors.Color(0.78, 0.08, 0.12, alpha=0.88)
+    fill = colors.Color(0.78, 0.08, 0.12, alpha=0.06)
+    width, height = 78 * mm, 34 * mm
+    x, y = -width / 2.0, -height / 2.0
+    canvas.setStrokeColor(red)
+    canvas.setFillColor(fill)
+    canvas.setLineWidth(2.4)
+    canvas.roundRect(x, y, width, height, 3.2 * mm, fill=1, stroke=1)
+    canvas.setLineWidth(0.9)
+    inset = 1.8 * mm
+    canvas.roundRect(x + inset, y + inset, width - 2 * inset, height - 2 * inset, 2.4 * mm, fill=0, stroke=1)
+    canvas.setFillColor(red)
+    canvas.setFont("Helvetica-Bold", 26)
+    canvas.drawCentredString(0, 1.6 * mm, "PAID")
+    canvas.setFont("Helvetica-Oblique", 11)
+    canvas.drawCentredString(0, -7.2 * mm, "Thank you")
+    canvas.restoreState()
+
+
 def generate_document_pdf(
     doc: PracticeDocument,
     *,
@@ -390,8 +419,36 @@ def generate_document_pdf(
                         story.append(Paragraph(_esc(name), small))
                     story.append(Spacer(1, 2 * mm))
 
-    page.build(story)
+    build_kw = {}
+    if invoice_is_paid(doc):
+        build_kw["onFirstPage"] = _draw_paid_stamp
+        build_kw["onLaterPages"] = _draw_paid_stamp
+    page.build(story, **build_kw)
     return buf.getvalue()
+
+
+def merge_pdfs(blobs: list[bytes]) -> bytes:
+    """Join invoice PDFs in order so a batch print is one document."""
+    import pypdfium2 as pdfium
+
+    dest = pdfium.PdfDocument.new()
+    sources: list = []
+    try:
+        for blob in blobs:
+            if not blob:
+                continue
+            src = pdfium.PdfDocument(blob)
+            sources.append(src)
+            dest.import_pages(src)
+        if len(dest) == 0:
+            raise ValueError("No pages to merge")
+        out = io.BytesIO()
+        dest.save(out)
+        return out.getvalue()
+    finally:
+        dest.close()
+        for src in sources:
+            src.close()
 
 
 def rasterize_pdf_pages(pdf_bytes: bytes, *, resolution: int = 288) -> list[bytes]:

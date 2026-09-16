@@ -22,6 +22,7 @@ import {
   documentKindLabel,
   parseDocumentKind,
   RFQ_EXPANSION,
+  documentStatusLabel,
   type AddressCard,
   type BankSnapshot,
   type DocumentLine,
@@ -241,6 +242,7 @@ export function PracticeDocumentEditorPage() {
   const [bank, setBank] = useState<BankSnapshot | null>(null);
   const [disclaimer, setDisclaimer] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [docStatus, setDocStatus] = useState<string>("draft");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -293,6 +295,7 @@ export function PracticeDocumentEditorPage() {
           setVatRate(Number(doc.vat_rate || 15));
           setBank(doc.bank || null);
           setDisclaimer(doc.disclaimer || null);
+          setDocStatus(doc.status || "draft");
           setLines(
             doc.lines?.length
               ? doc.lines.map((l) =>
@@ -619,6 +622,7 @@ export function PracticeDocumentEditorPage() {
         : await practiceApi.documents.create(body);
       setSavedId(doc.id);
       setNumber(doc.number);
+      setDocStatus(doc.status || "draft");
       lastSaved.current = formFingerprint();
       if (!opts?.stay) {
         allowLeave.current = true;
@@ -678,6 +682,7 @@ export function PracticeDocumentEditorPage() {
   async function printPreview() {
     const id = await save({ stay: true });
     if (!id) return;
+    setBusy(true);
     try {
       setError(null);
       const data = await practiceApi.documents.preview(id);
@@ -688,6 +693,8 @@ export function PracticeDocumentEditorPage() {
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not open PDF");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -724,7 +731,15 @@ export function PracticeDocumentEditorPage() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <Card className={`min-w-0 section-panel border-2 ${isRfq ? "neon-violet" : "neon-lime"}`}>
+      <Card className={`relative min-w-0 overflow-hidden section-panel border-2 ${isRfq ? "neon-violet" : "neon-lime"}`}>
+        {kind === "invoice" && docStatus === "paid" && (
+          <div className="doc-paid-stamp" aria-hidden="true">
+            <div className="doc-paid-stamp-mark">
+              <strong>PAID</strong>
+              <span>Thank you</span>
+            </div>
+          </div>
+        )}
         <CardContent className="min-w-0 space-y-6 pt-6">
           <table className="doc-sheet-top">
             <colgroup>
@@ -764,6 +779,11 @@ export function PracticeDocumentEditorPage() {
                   <p className="mt-1 text-sm tabular-nums text-muted-foreground">
                     {number || "Assigning number…"}
                   </p>
+                  {kind === "invoice" && docStatus === "paid" && (
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-red-700 dark:text-red-400">
+                      {documentStatusLabel("paid")}
+                    </p>
+                  )}
                 </td>
                 <td>
                   <div className="doc-sheet-logo-box">

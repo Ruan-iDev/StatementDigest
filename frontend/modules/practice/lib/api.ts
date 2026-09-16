@@ -265,6 +265,11 @@ export const practiceApi = {
     },
     get: (id: number) => apiRequest<PracticeDocument>(`/practice/documents/${id}`),
     preview: (id: number) => apiRequest<DocumentPreview>(`/practice/documents/${id}/preview`),
+    batchPreview: (ids: number[]) =>
+      apiRequest<DocumentPreview>("/practice/documents/batch-preview", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      }),
     create: (body: DocumentWrite) =>
       apiRequest<PracticeDocument>("/practice/documents", {
         method: "POST",
@@ -303,6 +308,50 @@ export const practiceApi = {
       }
       return new Blob([bytes], { type: "application/pdf" });
     },
+    batchPdfBlob: async (ids: number[]): Promise<Blob> => {
+      const token = getAuthToken();
+      const profileId = getStoredProfileId();
+      const res = await fetch(`${API_BASE}/practice/documents/batch-pdf`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(profileId != null ? { "X-Profile-Id": String(profileId) } : {}),
+        },
+        body: JSON.stringify({ ids }),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        let detail = res.statusText;
+        try {
+          const j = await res.json();
+          detail = j.detail || detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(typeof detail === "string" ? detail : "Could not build PDF");
+      }
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      const magic = String.fromCharCode(bytes[0] || 0, bytes[1] || 0, bytes[2] || 0, bytes[3] || 0);
+      if (bytes.length < 8 || magic !== "%PDF") {
+        throw new Error("Could not build PDF");
+      }
+      return new Blob([bytes], { type: "application/pdf" });
+    },
+    paymentReceived: (
+      id: number,
+      body?: {
+        amount?: number | string | null;
+        occurred_on?: string | null;
+        method?: string | null;
+        note?: string | null;
+      }
+    ) =>
+      apiRequest<PracticeDocument>(`/practice/documents/${id}/payment-received`, {
+        method: "POST",
+        body: JSON.stringify(body || {}),
+      }),
     invoiceFromQuote: (
       quoteId: number,
       body: { income_ledger_id: number; issued_on?: string | null; notes?: string | null }

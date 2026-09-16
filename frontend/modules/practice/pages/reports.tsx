@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { practiceApi } from "@/modules/practice/lib/api";
 import {
   documentEditorHref,
+  documentStatusLabel,
   type WorkflowReport,
   type WorkflowReportLine,
 } from "@/modules/practice/lib/types";
@@ -70,7 +71,16 @@ function ReportTable({
                     <span className="text-muted-foreground"> · {row.title}</span>
                   ) : null}
                   {row.status ? (
-                    <span className="ml-2 text-[11px] uppercase text-muted-foreground">{row.status}</span>
+                    <span
+                      className={cn(
+                        "ml-2 text-[11px] uppercase",
+                        row.status === "paid"
+                          ? "font-semibold text-red-700 dark:text-red-400"
+                          : "text-muted-foreground"
+                      )}
+                    >
+                      {documentStatusLabel(row.status)}
+                    </span>
                   ) : null}
                 </td>
                 <td className="py-2 pr-3 text-muted-foreground">{row.client_name || "—"}</td>

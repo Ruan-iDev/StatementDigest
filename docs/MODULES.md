@@ -1,8 +1,10 @@
 # Modules — how LedgerFlow grows without rewriting the core
 
-**Last updated:** 2026-09-02 · branch `feature/practice-module` · products library
+**Last updated:** 2026-09-16 · main · Work Flow in the EXE; **Cabinet Flow** named, not built
 
-This is the map for adding **Practice** (clients, suppliers, staff, products, quotes, invoices, project files) and any later bolt-on. Read this before editing module code.
+This is the map for adding **Work Flow** (Practice: clients, suppliers, staff, products, quotes, invoices, RFQs, project files) and any later bolt-on. Read this before editing module code.
+
+**Named, not started:** **Cabinet Flow** — next bolt-on. Brief still to come; do not scaffold until [TODO.md](./TODO.md) Next phase §5 has the spec.
 
 ---
 
@@ -110,6 +112,23 @@ If a change is not in the list above and is not inside `modules/`, ask whether i
 5. Thin pages under `frontend/app/<id>/` that only re-export module pages.
 
 Disable a module without deleting it: remove the id from both registries.
+
+---
+
+## Cabinet Flow (planned)
+
+**Status:** name only (2026-09-13). Product owner will explain later.
+
+Same plug-in rules as Work Flow when it starts:
+
+- Package `backend/app/modules/cabinet/` + `frontend/modules/cabinet/`
+- Own `cabinet_*` tables, `user_profile_id` on every row
+- Register in both `ENABLED_MODULE_IDS` / `ENABLED_MODULES`
+- Thin routes under `frontend/app/cabinet/`
+- Settings → Modules On/Off
+- Does not fork auth or a second database
+
+Until the brief lands: sidebar tile + `/cabinet` coming-soon hub only. No `cabinet_*` tables and no Settings switch.
 
 ---
 

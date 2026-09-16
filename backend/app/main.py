@@ -33,7 +33,7 @@ app_settings = get_settings()
 app = FastAPI(
     title="LedgerFlow API",
     description="Local-first personal finance: statements → ledgers → P&L",
-    version="2.1.1",
+    version="2.1.2",
 )
 
 
@@ -187,7 +187,7 @@ def health():
     # Keep in sync with repo root VERSION (desktop builds may set LEDGERFLOW_APP_VERSION).
     import os
 
-    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "2.1.1").strip() or "2.1.1"
+    version = (os.environ.get("LEDGERFLOW_APP_VERSION") or "2.1.2").strip() or "2.1.2"
 
     return {
         "status": "ok",

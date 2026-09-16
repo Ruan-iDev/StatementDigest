@@ -16,6 +16,7 @@ type Props = {
   title: string;
   pages: PreviewPage[];
   documentId?: number | null;
+  documentIds?: number[] | null;
   onClose: () => void;
 };
 
@@ -95,51 +96,119 @@ function waitForImages(doc: Document): Promise<void> {
   ).then(() => undefined);
 }
 
-export function PdfPreviewModal({ open, title, pages, documentId, onClose }: Props) {
+export function PdfPreviewModal({ open, title, pages, documentId, documentIds, onClose }: Props) {
   const [busy, setBusy] = useState<"save" | "print" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const printFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const printUrlRef = useRef<string | null>(null);
+  const printGen = useRef(0);
+  const batchKey = (documentIds || []).join(",");
+  const canSave = Boolean(documentId) || (documentIds != null && documentIds.length > 0);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && busy === null) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, busy]);
 
   useEffect(() => {
-    if (open) setError(null);
+    printGen.current += 1;
+    setBusy(null);
+    setError(null);
+  }, [open, documentId, batchKey]);
+
+  useEffect(() => {
     return () => {
-      printFrameRef.current?.remove();
+      // Keep a print iframe alive long enough for the OS dialog; drop it after.
+      const frame = printFrameRef.current;
+      const url = printUrlRef.current;
       printFrameRef.current = null;
+      printUrlRef.current = null;
+      if (!frame && !url) return;
+      window.setTimeout(() => {
+        frame?.remove();
+        if (url) URL.revokeObjectURL(url);
+      }, 120_000);
     };
   }, [open]);
+
+  function discardPrintFrame(delayMs = 0) {
+    const frame = printFrameRef.current;
+    const url = printUrlRef.current;
+    printFrameRef.current = null;
+    printUrlRef.current = null;
+    const go = () => {
+      frame?.remove();
+      if (url) URL.revokeObjectURL(url);
+    };
+    if (delayMs > 0) window.setTimeout(go, delayMs);
+    else go();
+  }
+
+  function attachPrintFrame(iframe: HTMLIFrameElement, url?: string) {
+    discardPrintFrame();
+    printFrameRef.current = iframe;
+    printUrlRef.current = url ?? null;
+    document.body.appendChild(iframe);
+  }
+
+  /** Resolve once print() has been invoked. Do not wait forever for afterprint. */
+  function invokePrint(win: Window | null): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        try {
+          win?.removeEventListener("afterprint", onAfter);
+        } catch {
+          /* plugin windows can throw */
+        }
+        window.removeEventListener("afterprint", onAfter);
+        resolve(ok);
+      };
+      const onAfter = () => finish(true);
+      if (!win) {
+        finish(false);
+        return;
+      }
+      try {
+        win.addEventListener("afterprint", onAfter);
+        window.addEventListener("afterprint", onAfter);
+        win.focus();
+        win.print();
+        // Chrome/Edge PDF iframes often never fire afterprint. Unfreeze the button.
+        window.setTimeout(() => finish(true), 900);
+      } catch {
+        finish(false);
+      }
+    });
+  }
 
   if (!open) return null;
 
   async function savePdf() {
-    if (!documentId) {
+    if (!canSave) {
       setError("Save this document first, then save the PDF.");
       return;
     }
+    const gen = printGen.current;
     setBusy("save");
     try {
       setError(null);
-      const blob = await practiceApi.documents.pdfBlob(documentId);
+      const blob =
+        documentIds && documentIds.length
+          ? await practiceApi.documents.batchPdfBlob(documentIds)
+          : await practiceApi.documents.pdfBlob(documentId as number);
       await saveBlobAsPdf(blob, pdfFilename(title));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not save PDF");
     } finally {
-      setBusy(null);
+      if (printGen.current === gen) setBusy(null);
     }
-  }
-
-  function attachPrintFrame(iframe: HTMLIFrameElement) {
-    printFrameRef.current?.remove();
-    printFrameRef.current = iframe;
-    document.body.appendChild(iframe);
   }
 
   function printPdfBlob(blob: Blob): Promise<boolean> {
@@ -155,11 +224,9 @@ export function PdfPreviewModal({ open, title, pages, documentId, onClose }: Pro
       const finish = (ok: boolean) => {
         if (settled) return;
         settled = true;
-        window.setTimeout(() => {
-          iframe.remove();
-          if (printFrameRef.current === iframe) printFrameRef.current = null;
-          URL.revokeObjectURL(url);
-        }, 600);
+        // Leave the iframe in place so the print dialog is not torn down.
+        if (!ok) discardPrintFrame();
+        else discardPrintFrame(120_000);
         resolve(ok);
       };
       iframe.onload = () => {
@@ -169,21 +236,15 @@ export function PdfPreviewModal({ open, title, pages, documentId, onClose }: Pro
           return;
         }
         window.setTimeout(() => {
-          try {
-            win.addEventListener("afterprint", () => finish(true));
-            opened = true;
-            win.focus();
-            win.print();
-          } catch {
-            finish(false);
-          }
+          opened = true;
+          void invokePrint(win).then(finish);
         }, 350);
       };
       iframe.onerror = () => finish(false);
       window.setTimeout(() => {
         if (!opened) finish(false);
       }, 8000);
-      attachPrintFrame(iframe);
+      attachPrintFrame(iframe, url);
       iframe.src = url;
     });
   }
@@ -217,42 +278,44 @@ export function PdfPreviewModal({ open, title, pages, documentId, onClose }: Pro
     doc.close();
     await waitForImages(doc);
     await new Promise((r) => window.setTimeout(r, 80));
-    return await new Promise<boolean>((resolve) => {
-      let settled = false;
-      const done = (ok: boolean) => {
-        if (settled) return;
-        settled = true;
-        window.removeEventListener("afterprint", onAfter);
-        resolve(ok);
-      };
-      const onAfter = () => done(true);
-      win.addEventListener("afterprint", onAfter, { once: true });
-      window.addEventListener("afterprint", onAfter, { once: true });
-      win.focus();
-      win.print();
-    });
+    const ok = await invokePrint(win);
+    if (ok) discardPrintFrame(120_000);
+    else discardPrintFrame();
+    return ok;
   }
 
   async function printPages() {
+    const gen = ++printGen.current;
     setBusy("print");
-    let printed = false;
     try {
       setError(null);
-      if (documentId && !isDesktopApp()) {
-        const blob = await practiceApi.documents.pdfBlob(documentId);
-        printed = await printPdfBlob(blob);
+      // Print the on-screen pages first — PDF-in-iframe print often never fires
+      // afterprint in Chrome/Edge and used to leave this button stuck on Printing…
+      let printed = await printPngPages();
+      if (!printed && !isDesktopApp()) {
+        if (printGen.current !== gen) return;
+        const blob =
+          documentIds && documentIds.length
+            ? await practiceApi.documents.batchPdfBlob(documentIds)
+            : documentId
+              ? await practiceApi.documents.pdfBlob(documentId)
+              : null;
+        if (blob) {
+          if (printGen.current !== gen) return;
+          printed = await printPdfBlob(blob);
+        }
       }
-      if (!printed) {
-        printed = await printPngPages();
+      if (!printed && printGen.current === gen) {
+        setError("Could not open the print dialog. Try Save PDF and print from there.");
       }
     } catch (e: unknown) {
-      printFrameRef.current?.remove();
-      printFrameRef.current = null;
-      setError(e instanceof Error ? e.message : "Could not print");
+      discardPrintFrame();
+      if (printGen.current === gen) {
+        setError(e instanceof Error ? e.message : "Could not print");
+      }
     } finally {
-      setBusy(null);
+      if (printGen.current === gen) setBusy(null);
     }
-    if (printed) onClose();
   }
 
   return (
@@ -267,8 +330,7 @@ export function PdfPreviewModal({ open, title, pages, documentId, onClose }: Pro
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold">{title}</h2>
             <p className="text-xs text-muted-foreground">
-              {pages.length} {pages.length === 1 ? "page" : "pages"} · Print uses the original PDF when
-              possible
+              {pages.length} {pages.length === 1 ? "page" : "pages"} · Print these pages, or save the PDF
             </p>
             {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
           </div>
@@ -278,7 +340,7 @@ export function PdfPreviewModal({ open, title, pages, documentId, onClose }: Pro
               size="sm"
               variant="outline"
               onClick={() => void savePdf()}
-              disabled={busy !== null || !documentId}
+              disabled={busy !== null || !canSave}
             >
               <FileDown className="mr-1 h-3.5 w-3.5" />
               {busy === "save" ? "Saving…" : "Save PDF"}

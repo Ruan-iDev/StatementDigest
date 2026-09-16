@@ -13,7 +13,7 @@ from app.database import get_db
 from app.deps import get_active_profile, get_active_profile_id
 from app.models import UserProfile
 from app.modules.practice.manifest import MANIFEST
-from app.modules.practice.commerce import router as commerce_router
+from app.modules.practice.commerce import router as commerce_router, sync_invoice_payment_status
 from app.modules.practice.staff import router as staff_router
 from app.modules.practice.products import router as products_router
 from app.modules.practice.templates import router as templates_router
@@ -542,6 +542,9 @@ def add_entry(
         occurred_on=body.occurred_on,
         occurred_time=_clean_time(body.occurred_time),
     )
+    db.flush()
+    if entry_type == EntryType.PAYMENT.value:
+        sync_invoice_payment_status(db, profile_id, document_id)
     # Touch project so it sorts to the top of the library
     project = _get_project(db, profile_id, project_id)
     project.updated_at = datetime.utcnow()
@@ -597,8 +600,14 @@ def update_entry(
         )
         if not inv:
             raise HTTPException(404, "Invoice not found on this project file")
+    old_document_id = row.document_id
     for key, value in data.items():
         setattr(row, key, value)
+    if row.entry_type == EntryType.PAYMENT.value:
+        db.flush()
+        sync_invoice_payment_status(db, profile_id, old_document_id)
+        if row.document_id != old_document_id:
+            sync_invoice_payment_status(db, profile_id, row.document_id)
     project = _get_project(db, profile_id, project_id)
     project.updated_at = datetime.utcnow()
     db.commit()
@@ -635,8 +644,11 @@ def delete_entry(
         )
     wage_id = row.wage_id
     expense_id = row.expense_id
+    payment_document_id = row.document_id if row.entry_type == EntryType.PAYMENT.value else None
     db.delete(row)
     db.flush()
+    if payment_document_id:
+        sync_invoice_payment_status(db, profile_id, payment_document_id)
     if wage_id:
         wage = (
             db.query(PracticeWage)

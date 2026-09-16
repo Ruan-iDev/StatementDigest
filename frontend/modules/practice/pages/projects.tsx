@@ -8,20 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { practiceApi } from "@/modules/practice/lib/api";
 import { useModuleFlags } from "@/modules/practice/flags-provider";
 import { FeatureOffPage } from "@/modules/practice/pages/disabled";
+import { ProjectFileGrid } from "@/modules/practice/pages/project-file-grid";
 import type { PracticeParty, PracticeProject } from "@/modules/practice/lib/types";
-
-const STATUS_LABEL: Record<string, string> = {
-  open: "Open",
-  on_hold: "On hold",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
 
 export function PracticeProjectsPage() {
   const router = useRouter();
@@ -53,12 +45,6 @@ export function PracticeProjectsPage() {
   if (ready && !flags.projects_enabled) {
     return <FeatureOffPage title="Projects" />;
   }
-
-  const listed = [...rows].sort((a, b) => {
-    const left = [a.reference || "", a.name, a.client_name || ""].join(" ");
-    const right = [b.reference || "", b.name, b.client_name || ""].join(" ");
-    return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
-  });
 
   function openNew() {
     setName("");
@@ -102,15 +88,15 @@ export function PracticeProjectsPage() {
         </p>
         <h1 className="page-title">Projects</h1>
         <p className="page-subtitle max-w-xl">
-          Each project is a file. Open it, fill in the info sheet, then add notes. Everything stays
-          on a dated trail.
+          Each project is a folder. The number sits on the folder, the name underneath. Open one,
+          fill in the info sheet, then add notes.
         </p>
       </header>
 
       {error && !formOpen && <p className="text-sm text-destructive">{error}</p>}
 
-      <div className="space-y-2">
-        <div className="flex justify-center pt-1">
+      <div className="space-y-4">
+        <div className="flex justify-end">
           <Button type="button" variant="outline" onClick={openNew}>
             <Plus className="mr-1 h-4 w-4" />
             New project
@@ -120,32 +106,8 @@ export function PracticeProjectsPage() {
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No project files yet.</p>
         ) : (
-          listed.map((row) => (
-            <Link key={row.id} href={`/practice/file?id=${row.id}`} className="block">
-              <Card className="transition-colors hover:border-[hsl(var(--neon-cyan)/0.45)]">
-                <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
-                  <div className="min-w-0 space-y-0.5">
-                    <div className="font-medium">
-                      {[row.reference || "—", row.name, row.client_name || "No client"]
-                        .join(" - ")}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {row.entry_count} {row.entry_count === 1 ? "entry" : "entries"}
-                    </div>
-                  </div>
-                  <Badge variant="outline">{STATUS_LABEL[row.status] ?? row.status}</Badge>
-                </CardContent>
-              </Card>
-            </Link>
-          ))
+          <ProjectFileGrid projects={rows} showClient />
         )}
-
-        <div className="flex justify-center pt-1">
-          <Button type="button" variant="outline" onClick={openNew}>
-            <Plus className="mr-1 h-4 w-4" />
-            New project
-          </Button>
-        </div>
       </div>
 
       <Modal

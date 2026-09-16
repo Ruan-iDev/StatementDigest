@@ -5,6 +5,29 @@
 
 ---
 
+## v2.1.2 — 2026-09-16
+
+**Theme:** Paid invoices, batch print, and project folders.
+
+**Work Flow · Invoices**
+- Record **Payment received** on a project paper trail (tied to an invoice) or on the client file — the invoice is marked **Paid**
+- Paid invoices show a red **PAID / Thank you** stamp on the sheet and on the PDF printout
+- Tick several invoices (library or client file) and **Print selected** as one batch
+- Print preview no longer freezes on **Printing…** after the first invoice
+
+**Work Flow · Projects**
+- Project library (and the client-file Projects tab) is a File Explorer-style grid of **yellow folders**
+- Project number sits **on** the folder; project name sits **underneath**; A–Z left to right
+
+**Cabinet Flow**
+- Sidebar tile + `/cabinet` coming-soon hub only (brief still to come)
+
+### Upgrade notes
+- Close `LedgerFlow-2.1.1-Portable.exe`, run `LedgerFlow-2.1.2-Portable.exe` when that EXE is cut
+- Dev: `npm run dev` (UI :3470 / API :8470)
+
+---
+
 ## v2.1.1 — 2026-09-13
 
 **Theme:** EXE profile switch, Work Flow RFQ, FNB fee lines.

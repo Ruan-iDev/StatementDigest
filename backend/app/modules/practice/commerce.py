@@ -38,6 +38,7 @@ from app.modules.practice.models import (
 )
 from app.modules.practice.schemas import (
     AddressCard,
+    DocumentBatchIn,
     DocumentCreate,
     DocumentLineIn,
     DocumentLineOut,
@@ -50,6 +51,7 @@ from app.modules.practice.schemas import (
     ExpenseOut,
     ExpenseUpdate,
     InvoiceFromQuote,
+    InvoicePaymentReceived,
     NoteImageOut,
     PartyOut,
     ProjectOut,
@@ -385,6 +387,86 @@ def _trail(
         project.updated_at = datetime.utcnow()
 
 
+_PAY_METHOD_LABEL = {
+    "eft": "EFT",
+    "cash": "Cash",
+    "card": "Card",
+    "other": "Other",
+}
+
+
+def sync_invoice_payment_status(db: Session, profile_id: int, invoice_id: int | None) -> None:
+    """Mark an invoice Paid when a payment is tied to it; clear Paid if none remain."""
+    if invoice_id is None:
+        return
+    invoice = (
+        db.query(PracticeDocument)
+        .filter(
+            PracticeDocument.id == invoice_id,
+            PracticeDocument.user_profile_id == profile_id,
+            PracticeDocument.kind == DocumentKind.INVOICE.value,
+        )
+        .first()
+    )
+    if not invoice or invoice.status == DocumentStatus.VOID.value:
+        return
+    remaining = (
+        db.query(PracticeEntry)
+        .filter(
+            PracticeEntry.user_profile_id == profile_id,
+            PracticeEntry.entry_type == EntryType.PAYMENT.value,
+            PracticeEntry.document_id == invoice_id,
+        )
+        .count()
+    )
+    if remaining:
+        invoice.status = DocumentStatus.PAID.value
+    elif invoice.status == DocumentStatus.PAID.value:
+        invoice.status = DocumentStatus.DRAFT.value
+    invoice.updated_at = datetime.utcnow()
+
+
+def record_invoice_payment(
+    db: Session,
+    profile_id: int,
+    invoice: PracticeDocument,
+    *,
+    amount: Decimal,
+    occurred_on: date | None,
+    method: str | None,
+    note: str | None,
+) -> None:
+    if invoice.kind != DocumentKind.INVOICE.value:
+        raise HTTPException(400, "Only invoices can be marked paid")
+    if invoice.status == DocumentStatus.VOID.value:
+        raise HTTPException(400, "A void invoice cannot be marked paid")
+    if amount is None or amount <= 0:
+        raise HTTPException(400, "A received payment needs an amount")
+    method_key = (method or "eft").strip().lower()
+    method_label = _PAY_METHOD_LABEL.get(method_key, "Other")
+    day = occurred_on or date.today()
+    bits = [
+        f"Received {day.isoformat()}",
+        method_label,
+        f"against {invoice.number}",
+        (note or "").strip() or None,
+    ]
+    if invoice.project_id:
+        _trail(
+            db,
+            profile_id,
+            invoice.project_id,
+            EntryType.PAYMENT.value,
+            f"Payment · {invoice.number}",
+            " · ".join(x for x in bits if x) or None,
+            amount=_money(amount),
+            document_id=invoice.id,
+            occurred_on=day,
+        )
+    invoice.status = DocumentStatus.PAID.value
+    invoice.updated_at = datetime.utcnow()
+
+
 @router.get("/documents", response_model=list[DocumentOut])
 def list_documents(
     kind: str | None = Query(default=None, pattern="^(quote|invoice|rfq)$"),
@@ -582,6 +664,117 @@ def get_note_image(
     return FileResponse(full, media_type=media, filename=full.name)
 
 
+def _document_pdf_bytes(db: Session, profile: UserProfile, row: PracticeDocument) -> bytes:
+    from app.modules.practice.document_pdf import generate_document_pdf
+
+    logo, _src = resolve_logo_path(db, profile)
+    return generate_document_pdf(
+        row,
+        currency=profile.currency or "ZAR",
+        logo_path=str(logo) if logo else None,
+        issuer=_issuer_card(db, profile).model_dump(),
+    )
+
+
+def _documents_for_batch(
+    db: Session, profile_id: int, ids: list[int]
+) -> list[PracticeDocument]:
+    if not ids:
+        raise HTTPException(400, "Pick at least one invoice")
+    if len(ids) > 50:
+        raise HTTPException(400, "Print up to 50 invoices at a time")
+    seen: set[int] = set()
+    ordered_ids: list[int] = []
+    for doc_id in ids:
+        if doc_id in seen:
+            continue
+        seen.add(doc_id)
+        ordered_ids.append(doc_id)
+    rows = (
+        db.query(PracticeDocument)
+        .options(joinedload(PracticeDocument.lines), joinedload(PracticeDocument.party))
+        .filter(
+            PracticeDocument.id.in_(ordered_ids),
+            PracticeDocument.user_profile_id == profile_id,
+            PracticeDocument.is_archived.is_(False),
+        )
+        .all()
+    )
+    by_id = {row.id: row for row in rows}
+    missing = [doc_id for doc_id in ordered_ids if doc_id not in by_id]
+    if missing:
+        raise HTTPException(404, "One of the invoices was not found")
+    out = [by_id[doc_id] for doc_id in ordered_ids]
+    for row in out:
+        if row.kind != DocumentKind.INVOICE.value:
+            raise HTTPException(400, "Batch print is for invoices only")
+        _require_document_feature(db, profile_id, row.kind)
+    return out
+
+
+def _batch_pdf_bytes(db: Session, profile: UserProfile, rows: list[PracticeDocument]) -> bytes:
+    from app.modules.practice.document_pdf import merge_pdfs
+
+    blobs = [_document_pdf_bytes(db, profile, row) for row in rows]
+    return merge_pdfs(blobs)
+
+
+@router.post("/documents/batch-preview", response_model=DocumentPreviewOut)
+def documents_batch_preview(
+    body: DocumentBatchIn,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    """PNG pages of several invoices in one preview — one print dialog."""
+    import base64
+
+    rows = _documents_for_batch(db, profile.id, body.ids)
+    from app.modules.practice.document_pdf import rasterize_pdf_pages
+
+    pdf_bytes = _batch_pdf_bytes(db, profile, rows)
+    pngs = rasterize_pdf_pages(pdf_bytes)
+    if not pngs:
+        raise HTTPException(500, "Could not render document preview")
+    pages = [
+        DocumentPreviewPage(
+            index=i,
+            data_url="data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+        )
+        for i, png in enumerate(pngs)
+    ]
+    numbers = ", ".join(row.number for row in rows[:4])
+    if len(rows) > 4:
+        numbers += f" +{len(rows) - 4} more"
+    title = f"{len(rows)} invoices · {numbers}" if len(rows) > 1 else f"Invoice {rows[0].number}"
+    return DocumentPreviewOut(
+        kind=DocumentKind.INVOICE.value,
+        number=rows[0].number if len(rows) == 1 else "BATCH",
+        title=title,
+        page_count=len(pages),
+        pages=pages,
+    )
+
+
+@router.post("/documents/batch-pdf")
+def documents_batch_pdf(
+    body: DocumentBatchIn,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    rows = _documents_for_batch(db, profile.id, body.ids)
+    pdf_bytes = _batch_pdf_bytes(db, profile, rows)
+    if len(rows) == 1:
+        safe = (rows[0].number or "invoice").replace(" ", "_")
+        filename = f"invoice_{safe}.pdf"
+    else:
+        filename = f"invoices_{len(rows)}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
 @router.get("/documents/{document_id}", response_model=DocumentOut)
 def get_document(
     document_id: int,
@@ -613,15 +806,7 @@ def document_pdf(
     if not row:
         raise HTTPException(404, "Document not found")
     _require_document_feature(db, profile.id, row.kind)
-    from app.modules.practice.document_pdf import generate_document_pdf
-
-    logo, _src = resolve_logo_path(db, profile)
-    pdf_bytes = generate_document_pdf(
-        row,
-        currency=profile.currency or "ZAR",
-        logo_path=str(logo) if logo else None,
-        issuer=_issuer_card(db, profile).model_dump(),
-    )
+    pdf_bytes = _document_pdf_bytes(db, profile, row)
     safe = (row.number or row.kind).replace(" ", "_")
     return Response(
         content=pdf_bytes,
@@ -648,15 +833,9 @@ def document_preview(
     if not row:
         raise HTTPException(404, "Document not found")
     _require_document_feature(db, profile.id, row.kind)
-    from app.modules.practice.document_pdf import generate_document_pdf, rasterize_pdf_pages
+    from app.modules.practice.document_pdf import rasterize_pdf_pages
 
-    logo, _src = resolve_logo_path(db, profile)
-    pdf_bytes = generate_document_pdf(
-        row,
-        currency=profile.currency or "ZAR",
-        logo_path=str(logo) if logo else None,
-        issuer=_issuer_card(db, profile).model_dump(),
-    )
+    pdf_bytes = _document_pdf_bytes(db, profile, row)
     pngs = rasterize_pdf_pages(pdf_bytes)
     if not pngs:
         raise HTTPException(500, "Could not render document preview")
@@ -749,6 +928,37 @@ def update_document(
             synchronize_session=False,
         )
     row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _document_out(db, row)
+
+
+@router.post("/documents/{document_id}/payment-received", response_model=DocumentOut)
+def document_payment_received(
+    document_id: int,
+    body: InvoicePaymentReceived,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    """Mark an invoice Paid. If it sits on a project file, also write a paper-trail payment."""
+    row = (
+        db.query(PracticeDocument)
+        .filter(PracticeDocument.id == document_id, PracticeDocument.user_profile_id == profile_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Document not found")
+    _require_document_feature(db, profile_id, row.kind)
+    amount = _money(body.amount if body.amount is not None else row.amount)
+    record_invoice_payment(
+        db,
+        profile_id,
+        row,
+        amount=amount,
+        occurred_on=body.occurred_on,
+        method=body.method,
+        note=body.note,
+    )
     db.commit()
     db.refresh(row)
     return _document_out(db, row)

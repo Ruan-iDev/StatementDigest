@@ -1,6 +1,6 @@
 # TODO — living backlog
 
-**Last updated:** 2026-09-02 · **App version: 2.1.0** · portable EXE `LedgerFlow-2.1.0-Portable.exe`  
+**Last updated:** 2026-09-16 · **App version: 2.1.2** · last portable EXE `LedgerFlow-2.1.1-Portable.exe` (2.1.2 not cut yet)  
 **How to use:** Move items between sections as work finishes. Add new items from product conversations. After any session, update **Status snapshot**.  
 **Release notes:** [RELEASE_NOTES.md](./RELEASE_NOTES.md)
 
@@ -11,7 +11,7 @@
 | Area | Status |
 |------|--------|
 | Local app run (FE + BE) | Working on **UI :3470 / API :8470** (`run.py` default **no auto-reload** — set `LEDGERFLOW_RELOAD=1` for watch mode) |
-| Portable EXE | **v2.1.0** `LedgerFlow-2.1.0-Portable.exe` |
+| Portable EXE | **v2.1.1** `LedgerFlow-2.1.1-Portable.exe` — next cut **v2.1.2** |
 | Soft grey + neon hub UI | Done |
 | Auth (login / guest / first-time setup) | Done v1.3 |
 | Returning-user greet + simple login | Done v1.3 |
@@ -26,7 +26,8 @@
 | Parsers (5 islands) | **Discovery 226 · FNB 1000+ · Capitec sample · Nedbank sample · Bank Zero sample** |
 | Reporting hub + monthly chart | Done — **calibrate after Discovery data** |
 | P&L / PDF letterhead | Partial — polish after real data |
-| Product docs in `docs/` | Living — refreshed 2026-08-04 |
+| Product docs in `docs/` | Living — refreshed 2026-09-16 |
+| **Cabinet Flow** (new module) | Named, parked — spec TBD (explain later) |
 
 ---
 
@@ -67,12 +68,24 @@ Work only on **`feature/practice-module`**. See [MODULES.md](./MODULES.md).
 - [x] Per-day wages on the project trail (days with decimals × daily rate, extras + deductions with description + amount, HR notes)
 - [x] Wage payments snapshot the rate at save time — later staff-card increases do not rewrite past project wages
 - [x] Remove paper-trail lines (wages, expenses, notes, meetings, payments) so a wrong wage can be dropped and loaded again
+- [x] Invoice payment received (project paper trail or client file) marks the invoice Paid + red “Paid — Thank you” PDF stamp
+- [x] Select multiple invoices (library + client file) and print them as one batch
+- [x] Projects library as small Windows-style **yellow folders**, A–Z left to right — number on the folder, name underneath
+- [x] Invoice print preview no longer sticks on Printing… after the first print
 - [ ] **Payslips** from staff wages (PDF, weekly/monthly, bank details on the staff card) — include days, rate, extras, and deductions
 - [ ] **HR file / report from wage notes** — each wage payment stores a performance note (good / poor work, unique events). Pull these onto a staff HR file later
 - [ ] **HR wage-increase report** — pull dated rate history (start / increase / decrease) to PDF
 - [ ] Staff statement PDF (same preview window as supplier statements)
 - [ ] Attach files to a project
 - [ ] Merge to `Develop---EXE-Build` only when a slice is shippable
+
+### 5 — Cabinet Flow (new module — spec later)
+Parked until the product shape is explained. Same modular-monolith rules as Work Flow: own folder, own tables, one login / one SQLite / one EXE. See [MODULES.md](./MODULES.md).
+- [x] Sidebar module tile + `/cabinet` placeholder hub (visual only)
+- [ ] Hear the Cabinet Flow brief (what it is, who it is for, what it must not do)
+- [ ] Write the module map (folders, tables, nav, what it uses from core / Work Flow)
+- [ ] Settings → Modules On/Off for Cabinet Flow
+- [ ] Do **not** start the real build until the brief is in this file
 
 ---
 
@@ -164,6 +177,7 @@ Work only on **`feature/practice-module`**. See [MODULES.md](./MODULES.md).
 - [ ] Same privacy rule: statements stay on device unless user opts into something else  
 
 ### Later / optional
+- [ ] **Cabinet Flow** module — named 2026-09-13; brief still to come (see Next phase §5)
 - [ ] Standard Bank / Absa parsers (new modules only)
 - [ ] Real multi-user cloud accounts (not the primary “go live” path)
 - [ ] Local LLM assist for categorisation hints

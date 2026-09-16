@@ -8,14 +8,21 @@ import { cn, formatDate, formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { Modal } from "@/components/ui/modal";
 import { practiceApi } from "@/modules/practice/lib/api";
 import { useModuleFlags } from "@/modules/practice/flags-provider";
 import { tradingAsLine } from "@/modules/practice/pages/client-picker";
 import { PdfPreviewModal, type PreviewPage } from "@/modules/practice/pages/pdf-preview-modal";
+import { InvoiceBatchBar, InvoiceCheck } from "@/modules/practice/pages/invoice-batch";
+import { ProjectFileGrid } from "@/modules/practice/pages/project-file-grid";
 import { PartyFormModal } from "@/modules/practice/pages/party-form";
 import {
   clientFileHref,
   documentEditorHref,
+  documentStatusLabel,
   type ClientFileTab,
   type PartyWrite,
   type PracticeDocument,
@@ -23,12 +30,13 @@ import {
   type PracticeProject,
 } from "@/modules/practice/lib/types";
 
-const STATUS_LABEL: Record<string, string> = {
-  open: "Open",
-  on_hold: "On hold",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export function PracticeClientFilePage() {
   const { flags, ready } = useModuleFlags();
@@ -45,11 +53,20 @@ export function PracticeClientFilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
   const [printingId, setPrintingId] = useState<number | null>(null);
+  const [printingBatch, setPrintingBatch] = useState(false);
+  const [selectedInvoices, setSelectedInvoices] = useState<Set<number>>(new Set());
   const [preview, setPreview] = useState<{
     title: string;
     pages: PreviewPage[];
-    documentId: number;
+    documentId?: number;
+    documentIds?: number[];
   } | null>(null);
+  const [payRow, setPayRow] = useState<PracticeDocument | null>(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payDate, setPayDate] = useState(todayIso);
+  const [payMethod, setPayMethod] = useState("eft");
+  const [payNote, setPayNote] = useState("");
+  const [paying, setPaying] = useState(false);
 
   const validId = Number.isFinite(id) && id > 0;
 
@@ -117,6 +134,11 @@ export function PracticeClientFilePage() {
     setQuotes(quoteList);
     setInvoices(invoiceList);
     setProjects(projectList);
+    setSelectedInvoices((prev) => {
+      const ids = new Set(invoiceList.map((row) => row.id));
+      const next = new Set([...prev].filter((invoiceId) => ids.has(invoiceId)));
+      return next.size === prev.size ? prev : next;
+    });
   }
 
   useEffect(() => {
@@ -137,8 +159,41 @@ export function PracticeClientFilePage() {
     }
   }
 
+  function toggleInvoice(invoiceId: number, on: boolean) {
+    setSelectedInvoices((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(invoiceId);
+      else next.delete(invoiceId);
+      return next;
+    });
+  }
+
+  function toggleAllInvoices(on: boolean) {
+    setSelectedInvoices(on ? new Set(invoices.map((row) => row.id)) : new Set());
+  }
+
+  async function printSelectedInvoices() {
+    const ids = invoices.filter((row) => selectedInvoices.has(row.id)).map((row) => row.id);
+    if (ids.length === 0) return;
+    setPrintingBatch(true);
+    try {
+      setError(null);
+      const data = await practiceApi.documents.batchPreview(ids);
+      setPreview({
+        title: data.title,
+        pages: data.pages,
+        documentIds: ids,
+      });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not open print preview");
+    } finally {
+      setPrintingBatch(false);
+    }
+  }
+
   async function printDocument(row: PracticeDocument) {
     setPrintingId(row.id);
+    const unlock = window.setTimeout(() => setPrintingId(null), 20_000);
     try {
       setError(null);
       const data = await practiceApi.documents.preview(row.id);
@@ -150,6 +205,7 @@ export function PracticeClientFilePage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not open print preview");
     } finally {
+      window.clearTimeout(unlock);
       setPrintingId(null);
     }
   }
@@ -163,6 +219,39 @@ export function PracticeClientFilePage() {
         sourceQuoteId: row.id,
       })
     );
+  }
+
+  function openPayment(row: PracticeDocument) {
+    setPayRow(row);
+    setPayAmount(String(row.amount));
+    setPayDate(todayIso());
+    setPayMethod("eft");
+    setPayNote("");
+  }
+
+  async function submitPayment() {
+    if (!payRow) return;
+    const amount = Number(payAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("Enter a payment amount greater than zero");
+      return;
+    }
+    setPaying(true);
+    try {
+      setError(null);
+      await practiceApi.documents.paymentReceived(payRow.id, {
+        amount,
+        occurred_on: payDate || todayIso(),
+        method: payMethod,
+        note: payNote.trim() || null,
+      });
+      setPayRow(null);
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not record payment");
+    } finally {
+      setPaying(false);
+    }
   }
 
   function setTab(next: ClientFileTab) {
@@ -205,11 +294,6 @@ export function PracticeClientFilePage() {
   }
 
   const ta = tradingAsLine(client.name, client.trading_name);
-  const listedProjects = [...projects].sort((a, b) => {
-    const left = [a.reference || "", a.name].join(" ");
-    const right = [b.reference || "", b.name].join(" ");
-    return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
-  });
 
   return (
     <div className="space-y-6">
@@ -327,7 +411,7 @@ export function PracticeClientFilePage() {
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium tabular-nums">{row.number}</span>
-                      <Badge variant="outline">{row.status}</Badge>
+                      <Badge variant="outline">{documentStatusLabel(row.status)}</Badge>
                     </div>
                     <div className="text-sm">{row.title}</div>
                     <div className="text-xs text-muted-foreground">
@@ -383,10 +467,19 @@ export function PracticeClientFilePage() {
 
       {tab === "invoices" && flags.invoices_enabled && (
         <section className="space-y-2">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <InvoiceBatchBar
+              total={invoices.length}
+              selectedCount={selectedInvoices.size}
+              allSelected={invoices.length > 0 && selectedInvoices.size === invoices.length}
+              onToggleAll={toggleAllInvoices}
+              onPrint={() => void printSelectedInvoices()}
+              printing={printingBatch}
+            />
             <Button
               type="button"
               size="sm"
+              className="ml-auto"
               onClick={() => router.push(documentEditorHref({ kind: "invoice", partyId: client.id }))}
             >
               <Plus className="mr-1 h-4 w-4" />
@@ -399,15 +492,25 @@ export function PracticeClientFilePage() {
             invoices.map((row) => (
               <Card
                 key={row.id}
-                className="cursor-pointer transition-colors hover:border-[hsl(var(--neon-magenta)/0.45)]"
+                className={cn(
+                  "cursor-pointer transition-colors hover:border-[hsl(var(--neon-magenta)/0.45)]",
+                  selectedInvoices.has(row.id) && "border-[hsl(var(--neon-magenta)/0.55)]"
+                )}
                 onClick={() => router.push(documentEditorHref({ kind: "invoice", id: row.id }))}
                 onDoubleClick={() => router.push(documentEditorHref({ kind: "invoice", id: row.id }))}
               >
                 <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
                   <div className="min-w-0 space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
+                      <InvoiceCheck
+                        checked={selectedInvoices.has(row.id)}
+                        onChange={(on) => toggleInvoice(row.id, on)}
+                        label={`Select ${row.number}`}
+                      />
                       <span className="font-medium tabular-nums">{row.number}</span>
-                      <Badge variant="outline">{row.status}</Badge>
+                      <Badge variant={row.status === "paid" ? "danger" : "outline"}>
+                        {documentStatusLabel(row.status)}
+                      </Badge>
                       {row.source_quote_number && (
                         <span className="text-xs text-muted-foreground">from {row.source_quote_number}</span>
                       )}
@@ -421,16 +524,28 @@ export function PracticeClientFilePage() {
                   </div>
                   <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
                     <span className="text-sm font-semibold tabular-nums">{formatMoney(row.amount)}</span>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={printingId === row.id}
-                      onClick={() => void printDocument(row)}
-                    >
-                      <Printer className="mr-1 h-3.5 w-3.5" />
-                      {printingId === row.id ? "Opening…" : "Print preview"}
-                    </Button>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {row.status !== "paid" && row.status !== "void" && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openPayment(row)}
+                        >
+                          Payment received
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={printingId === row.id}
+                        onClick={() => void printDocument(row)}
+                      >
+                        <Printer className="mr-1 h-3.5 w-3.5" />
+                        {printingId === row.id ? "Opening…" : "Print preview"}
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -453,29 +568,10 @@ export function PracticeClientFilePage() {
               New project
             </Button>
           </div>
-          {listedProjects.length === 0 ? (
+          {projects.length === 0 ? (
             <p className="text-sm text-muted-foreground">No projects linked to this client yet.</p>
           ) : (
-            listedProjects.map((row) => (
-              <Card
-                key={row.id}
-                className="cursor-pointer transition-colors hover:border-[hsl(var(--neon-cyan)/0.45)]"
-                onClick={() => router.push(`/practice/file?id=${row.id}`)}
-                onDoubleClick={() => router.push(`/practice/file?id=${row.id}`)}
-              >
-                <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
-                  <div className="min-w-0 space-y-0.5">
-                    <div className="font-medium">
-                      {[row.reference || "—", row.name].join(" - ")}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {row.entry_count} {row.entry_count === 1 ? "entry" : "entries"}
-                    </div>
-                  </div>
-                  <Badge variant="outline">{STATUS_LABEL[row.status] ?? row.status}</Badge>
-                </CardContent>
-              </Card>
-            ))
+            <ProjectFileGrid projects={projects} />
           )}
         </section>
       )}
@@ -492,8 +588,62 @@ export function PracticeClientFilePage() {
         title={preview?.title || "Preview"}
         pages={preview?.pages || []}
         documentId={preview?.documentId}
+        documentIds={preview?.documentIds}
         onClose={() => setPreview(null)}
       />
+      <Modal
+        open={Boolean(payRow)}
+        onClose={() => setPayRow(null)}
+        title="Payment received"
+        description={
+          payRow
+            ? `Mark ${payRow.number} as Paid. The invoice and its PDF printout get a Paid — Thank you stamp.`
+            : undefined
+        }
+      >
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Amount received</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              value={payAmount}
+              onChange={(e) => setPayAmount(e.target.value)}
+              placeholder="0.00"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Date received</Label>
+            <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Method</Label>
+            <Select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
+              <option value="eft">EFT</option>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="other">Other</option>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Note</Label>
+            <Input
+              value={payNote}
+              onChange={(e) => setPayNote(e.target.value)}
+              placeholder="Deposit, progress payment, reference…"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="outline" onClick={() => setPayRow(null)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void submitPayment()} disabled={paying || !payAmount}>
+              {paying ? "Saving…" : "Mark as Paid"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

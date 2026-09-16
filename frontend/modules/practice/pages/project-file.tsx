@@ -22,6 +22,7 @@ import { ClientPicker } from "@/modules/practice/pages/client-picker";
 import {
   clientFileHref,
   documentEditorHref,
+  documentStatusLabel,
   RFQ_EXPANSION,
   supplierFileHref,
   type DocumentKind,
@@ -289,13 +290,14 @@ export function PracticeProjectFilePage() {
 
   async function load() {
     if (!validId) return;
-    const [detail, partyList, ledgerList, expenseList, staffRows, wageRows] = await Promise.all([
+    const [detail, partyList, ledgerList, expenseList, staffRows, wageRows, invoiceList] = await Promise.all([
       practiceApi.projects.get(id),
       practiceApi.parties.list("client"),
       api.ledgers.list(),
       practiceApi.expenses.list(id),
       practiceApi.staff.list(),
       practiceApi.wages.list({ projectId: id }),
+      flags.invoices_enabled ? practiceApi.documents.list("invoice", id) : Promise.resolve([]),
     ]);
     setProject(detail);
     setClients(partyList);
@@ -303,6 +305,7 @@ export function PracticeProjectFilePage() {
     setProjectExpenses(expenseList);
     setStaffList(staffRows);
     setProjectWages(wageRows);
+    setProjectInvoices(invoiceList);
   }
 
   useEffect(() => {
@@ -326,7 +329,7 @@ export function PracticeProjectFilePage() {
     setEditingEntry(null);
   }
 
-  function openAdd(type: AddKind = "note") {
+  function openAdd(type: AddKind = "note", opts?: { invoiceId?: number }) {
     setEditingEntry(null);
     setAddType(type);
     setAddOpen(true);
@@ -366,10 +369,25 @@ export function PracticeProjectFilePage() {
       setPayDate(todayIso());
       setPayMethod("eft");
       setPayNote("");
-      setPayInvoiceId("");
+      setPayInvoiceId(opts?.invoiceId ? String(opts.invoiceId) : "");
       practiceApi.documents
         .list("invoice", project.id)
-        .then(setProjectInvoices)
+        .then((rows) => {
+          setProjectInvoices(rows);
+          if (opts?.invoiceId) {
+            const inv = rows.find((d) => d.id === opts.invoiceId);
+            if (inv) {
+              setPayInvoiceId(String(inv.id));
+              setPayAmount(String(inv.amount));
+            }
+            return;
+          }
+          const unpaid = rows.filter((d) => d.status !== "paid" && d.status !== "void");
+          if (unpaid.length === 1) {
+            setPayInvoiceId(String(unpaid[0].id));
+            setPayAmount(String(unpaid[0].amount));
+          }
+        })
         .catch(() => setProjectInvoices([]));
     }
   }
@@ -1023,6 +1041,10 @@ export function PracticeProjectFilePage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">{ENTRY_LABEL[entry.entry_type]}</Badge>
+                        {entry.entry_type === "invoice" &&
+                          projectInvoices.find((d) => d.id === entry.document_id)?.status === "paid" && (
+                            <Badge variant="danger">{documentStatusLabel("paid")}</Badge>
+                          )}
                         <span className="text-sm font-medium">{entry.title}</span>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1038,6 +1060,23 @@ export function PracticeProjectFilePage() {
                         )}
                       </div>
                     </div>
+                    {entry.entry_type === "invoice" &&
+                      entry.document_id &&
+                      projectInvoices.find((d) => d.id === entry.document_id)?.status !== "paid" && (
+                        <div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAdd("payment", { invoiceId: entry.document_id! });
+                            }}
+                          >
+                            Payment received
+                          </Button>
+                        </div>
+                      )}
                     {entry.body && (
                       <p className="whitespace-pre-wrap text-sm text-muted-foreground">{entry.body}</p>
                     )}
@@ -1504,15 +1543,28 @@ export function PracticeProjectFilePage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Against invoice (optional)</Label>
-                <Select value={payInvoiceId} onChange={(e) => setPayInvoiceId(e.target.value)}>
+                <Select
+                  value={payInvoiceId}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setPayInvoiceId(next);
+                    const inv = projectInvoices.find((d) => String(d.id) === next);
+                    if (inv && !payAmount) setPayAmount(String(inv.amount));
+                  }}
+                >
                   <option value="">Not tied to an invoice</option>
                   {projectInvoices.map((inv) => (
                     <option key={inv.id} value={inv.id}>
                       {inv.number}
                       {inv.title ? ` · ${inv.title}` : ""} · {formatMoney(inv.amount)}
+                      {inv.status === "paid" ? " · Paid" : ""}
                     </option>
                   ))}
                 </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Tie the payment to an invoice to mark it Paid — the invoice and its PDF printout get a
+                  red Paid — Thank you stamp.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>Note</Label>
