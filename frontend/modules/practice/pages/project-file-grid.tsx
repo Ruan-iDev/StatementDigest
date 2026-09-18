@@ -38,7 +38,7 @@ function WindowsFolderIcon({ status, number }: { status: string; number: string 
   const stripe = statusStripe(status);
   const uid = `folder-${number.replace(/[^a-zA-Z0-9_-]/g, "") || "x"}`;
   return (
-    <svg viewBox="0 0 80 64" className="h-[3.55rem] w-[4.4rem]" aria-hidden="true">
+    <svg viewBox="0 0 80 64" className="h-[10.65rem] w-[13.2rem]" aria-hidden="true">
       <defs>
         <linearGradient id={`${uid}-back`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#E8B84A" />
@@ -102,13 +102,14 @@ export function ProjectFileGrid({
   const listed = sortProjectFiles(projects);
   return (
     <div
-      className="grid grid-cols-[repeat(auto-fill,minmax(7.25rem,1fr))] justify-items-center gap-x-1 gap-y-3"
+      className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] justify-items-center gap-x-3 gap-y-5"
       role="list"
       aria-label="Project files"
     >
       {listed.map((row) => {
         const number = (row.reference || "").trim();
         const name = (row.name || "").trim() || "Project";
+        const client = showClient ? (row.client_name || "").trim() : "";
         const status = STATUS_LABEL[row.status] ?? row.status;
         const uid = `n${row.id}`;
         return (
@@ -116,28 +117,28 @@ export function ProjectFileGrid({
             key={row.id}
             href={`/practice/file?id=${row.id}`}
             role="listitem"
-            title={`${number ? `${number} · ` : ""}${name}${row.client_name ? ` · ${row.client_name}` : ""} · ${status}`}
+            title={`${number ? `${number} · ` : ""}${name}${client ? ` · ${client}` : ""} · ${status}`}
             className={cn(
-              "group flex w-full max-w-[7.5rem] flex-col items-center rounded-md px-1 py-2 text-center",
+              "group flex w-full max-w-[14.5rem] flex-col items-center rounded-lg px-1.5 py-2 text-center",
               "hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             )}
           >
             <span className="relative inline-flex">
               <WindowsFolderIcon status={row.status} number={uid} />
-              <span className="pointer-events-none absolute inset-x-[12%] top-[46%] flex h-[34%] items-center justify-center">
-                <span className="line-clamp-2 w-full px-0.5 text-[9px] font-bold leading-[1.15] tracking-tight text-[#5c3d08] drop-shadow-[0_1px_0_rgba(255,236,170,0.85)]">
+              <span className="pointer-events-none absolute inset-x-[11%] top-[40%] bottom-[11%] flex flex-col items-center justify-center gap-0.5 px-1">
+                <span className="line-clamp-1 w-full text-base font-extrabold leading-tight tracking-tight text-[#5c3d08] drop-shadow-[0_1px_0_rgba(255,236,170,0.9)]">
                   {number || "—"}
                 </span>
+                <span className="line-clamp-2 w-full text-[13px] font-semibold leading-snug tracking-tight text-[#5c3d08] drop-shadow-[0_1px_0_rgba(255,236,170,0.85)]">
+                  {name}
+                </span>
+                {client ? (
+                  <span className="line-clamp-1 w-full text-[11px] font-medium leading-tight text-[#7a5420]/90">
+                    {client}
+                  </span>
+                ) : null}
               </span>
             </span>
-            <span className="mt-1.5 line-clamp-2 w-full text-[11px] font-medium leading-tight tracking-tight">
-              {name}
-            </span>
-            {showClient && row.client_name ? (
-              <span className="mt-0.5 line-clamp-1 w-full text-[10px] text-muted-foreground">
-                {row.client_name}
-              </span>
-            ) : null}
           </Link>
         );
       })}

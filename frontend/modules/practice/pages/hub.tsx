@@ -131,7 +131,7 @@ export function PracticeHubPage() {
           compact
           href="/practice/configuration"
           title="Configuration"
-          description="Logo, VAT, bank details, disclaimers."
+          description="Company details, quote/invoice settings, and Work Flow ledgers."
           icon={Settings2}
           accent="violet"
         />

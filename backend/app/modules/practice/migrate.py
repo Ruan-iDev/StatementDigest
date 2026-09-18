@@ -20,6 +20,38 @@ def _table_exists(conn, table: str) -> bool:
 
 def migrate(engine) -> None:
     with engine.begin() as conn:
+        if not _table_exists(conn, "practice_travels"):
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE practice_travels (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_profile_id INTEGER NOT NULL,
+                        project_id INTEGER NOT NULL,
+                        staff_id INTEGER NOT NULL,
+                        ledger_id INTEGER NOT NULL,
+                        km NUMERIC(18, 2) NOT NULL DEFAULT 0,
+                        price_per_litre NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                        amount NUMERIC(18, 2) NOT NULL DEFAULT 0,
+                        occurred_on DATE,
+                        notes TEXT,
+                        created_at DATETIME,
+                        FOREIGN KEY(user_profile_id) REFERENCES user_profiles(id),
+                        FOREIGN KEY(project_id) REFERENCES practice_projects(id),
+                        FOREIGN KEY(staff_id) REFERENCES practice_staff(id),
+                        FOREIGN KEY(ledger_id) REFERENCES practice_ledgers(id)
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_practice_travels_user_profile_id ON practice_travels (user_profile_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_practice_travels_project_id ON practice_travels (project_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_practice_travels_staff_id ON practice_travels (staff_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_practice_travels_ledger_id ON practice_travels (ledger_id)"))
+        if _table_exists(conn, "practice_projects"):
+            pcols = _columns(conn, "practice_projects")
+            if "checklist_json" not in pcols:
+                conn.execute(text("ALTER TABLE practice_projects ADD COLUMN checklist_json JSON"))
         if not _table_exists(conn, "practice_entries"):
             return
         cols = _columns(conn, "practice_entries")
@@ -27,6 +59,18 @@ def migrate(engine) -> None:
             conn.execute(text("ALTER TABLE practice_entries ADD COLUMN amount NUMERIC(18, 2)"))
         if "document_id" not in cols:
             conn.execute(text("ALTER TABLE practice_entries ADD COLUMN document_id INTEGER"))
+        if "ledger_id" not in cols:
+            conn.execute(text("ALTER TABLE practice_entries ADD COLUMN ledger_id INTEGER"))
+        if "travel_id" not in cols:
+            conn.execute(text("ALTER TABLE practice_entries ADD COLUMN travel_id INTEGER"))
+        if "document_ids" not in cols:
+            conn.execute(text("ALTER TABLE practice_entries ADD COLUMN document_ids JSON"))
+            conn.execute(
+                text(
+                    "UPDATE practice_entries SET document_ids = '[' || document_id || ']' "
+                    "WHERE document_id IS NOT NULL AND document_ids IS NULL"
+                )
+            )
         if "expense_id" not in cols:
             conn.execute(text("ALTER TABLE practice_entries ADD COLUMN expense_id INTEGER"))
         if "wage_id" not in cols:
@@ -45,8 +89,20 @@ def migrate(engine) -> None:
                 conn.execute(text("ALTER TABLE practice_wages ADD COLUMN deductions JSON"))
             if "additions" not in wcols:
                 conn.execute(text("ALTER TABLE practice_wages ADD COLUMN additions JSON"))
+            if "kind" not in wcols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE practice_wages ADD COLUMN kind VARCHAR(20) NOT NULL DEFAULT 'wage'"
+                    )
+                )
+            if "override_reason" not in wcols:
+                conn.execute(text("ALTER TABLE practice_wages ADD COLUMN override_reason TEXT"))
+            if "ledger_id" not in wcols:
+                conn.execute(text("ALTER TABLE practice_wages ADD COLUMN ledger_id INTEGER"))
         if _table_exists(conn, "practice_staff"):
             scols = _columns(conn, "practice_staff")
+            if "default_ledger_id" not in scols:
+                conn.execute(text("ALTER TABLE practice_staff ADD COLUMN default_ledger_id INTEGER"))
             if "wage_amount" not in scols:
                 conn.execute(text("ALTER TABLE practice_staff ADD COLUMN wage_amount NUMERIC(18, 2)"))
             if "wage_period" not in scols:
@@ -304,3 +360,135 @@ def migrate(engine) -> None:
                         ),
                         {"p": pid, "n": "Sales / Invoice Income"},
                     )
+
+    _import_workflow_ledgers(engine)
+
+
+def _import_workflow_ledgers(engine) -> None:
+    """Copy Ledger Flow income/expense ledgers into Work Flow once, then remap ids."""
+    with engine.connect() as conn:
+        if not _table_exists(conn, "practice_ledgers") or not _table_exists(conn, "ledgers"):
+            return
+        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        conn.commit()
+        trans = conn.begin()
+        try:
+            _import_workflow_ledgers_tx(conn)
+            trans.commit()
+        except Exception:
+            trans.rollback()
+            raise
+
+
+def _import_workflow_ledgers_tx(conn) -> None:
+    conn.execute(text("PRAGMA foreign_keys=OFF"))
+    if not _table_exists(conn, "practice_ledgers") or not _table_exists(conn, "ledgers"):
+        return
+    if not _table_exists(conn, "practice_meta"):
+        conn.execute(
+            text("CREATE TABLE practice_meta (key VARCHAR(80) PRIMARY KEY, value TEXT)")
+        )
+    done = conn.execute(
+        text("SELECT value FROM practice_meta WHERE key = 'workflow_ledgers_imported'")
+    ).fetchone()
+    sources = conn.execute(
+        text(
+            "SELECT id, user_profile_id, name, type, is_archived, sort_order "
+            "FROM ledgers WHERE type IN ('income', 'expense')"
+        )
+    ).fetchall()
+    existing = {
+        (int(r[0]), int(r[1]))
+        for r in conn.execute(
+            text(
+                "SELECT user_profile_id, source_ledger_id FROM practice_ledgers "
+                "WHERE source_ledger_id IS NOT NULL"
+            )
+        ).fetchall()
+    }
+    for lid, pid, name, typ, archived, sort_order in sources:
+        if (int(pid), int(lid)) in existing:
+            continue
+        conn.execute(
+            text(
+                "INSERT INTO practice_ledgers "
+                "(user_profile_id, name, type, is_archived, sort_order, source_ledger_id, created_at, updated_at) "
+                "VALUES (:pid, :name, :type, :arch, :sort, :src, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ),
+            {
+                "pid": pid,
+                "name": name,
+                "type": typ,
+                "arch": 1 if archived else 0,
+                "sort": sort_order or 0,
+                "src": lid,
+            },
+        )
+    if done:
+        return
+    conn.execute(text("PRAGMA foreign_keys=OFF"))
+    if _table_exists(conn, "practice_expenses"):
+        conn.execute(
+            text(
+                """
+                UPDATE practice_expenses
+                SET ledger_id = (
+                    SELECT pl.id FROM practice_ledgers pl
+                    WHERE pl.source_ledger_id = practice_expenses.ledger_id
+                      AND pl.user_profile_id = practice_expenses.user_profile_id
+                )
+                WHERE EXISTS (
+                    SELECT 1 FROM practice_ledgers pl
+                    WHERE pl.source_ledger_id = practice_expenses.ledger_id
+                      AND pl.user_profile_id = practice_expenses.user_profile_id
+                      AND pl.id != practice_expenses.ledger_id
+                )
+                """
+            )
+        )
+    if _table_exists(conn, "practice_documents"):
+        conn.execute(
+            text(
+                """
+                UPDATE practice_documents
+                SET income_ledger_id = (
+                    SELECT pl.id FROM practice_ledgers pl
+                    WHERE pl.source_ledger_id = practice_documents.income_ledger_id
+                      AND pl.user_profile_id = practice_documents.user_profile_id
+                )
+                WHERE income_ledger_id IS NOT NULL
+                  AND EXISTS (
+                    SELECT 1 FROM practice_ledgers pl
+                    WHERE pl.source_ledger_id = practice_documents.income_ledger_id
+                      AND pl.user_profile_id = practice_documents.user_profile_id
+                      AND pl.id != practice_documents.income_ledger_id
+                )
+                """
+            )
+        )
+    if _table_exists(conn, "practice_wages"):
+        conn.execute(
+            text(
+                """
+                UPDATE practice_wages
+                SET ledger_id = (
+                    SELECT pl.id FROM practice_ledgers pl
+                    WHERE pl.user_profile_id = practice_wages.user_profile_id
+                      AND pl.type = 'expense'
+                      AND pl.is_archived = 0
+                      AND (
+                        lower(pl.name) LIKE '%wage%'
+                        OR lower(pl.name) LIKE '%salar%'
+                      )
+                    ORDER BY pl.id
+                    LIMIT 1
+                )
+                WHERE ledger_id IS NULL
+                """
+            )
+        )
+    conn.execute(
+        text(
+            "INSERT INTO practice_meta (key, value) VALUES ('workflow_ledgers_imported', '1')"
+        )
+    )

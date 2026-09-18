@@ -9,6 +9,7 @@ import {
   Sparkles,
   ScrollText,
   LogOut,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
@@ -145,6 +146,18 @@ export function Sidebar() {
         })}
       </nav>
       <div className="space-y-1 border-t border-border/80 p-2.5">
+        <Link
+          href="/settings"
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl border border-transparent px-2.5 py-2 text-sm transition-all",
+            pathname === "/settings" || pathname.startsWith("/settings/")
+              ? "border-[hsl(var(--neon-violet)/0.55)] bg-[hsl(var(--neon-violet)/0.12)] text-foreground shadow-[0_0_12px_hsl(var(--neon-violet)/0.2)]"
+              : "text-muted-foreground hover:border-[hsl(var(--neon-violet)/0.35)] hover:bg-[hsl(var(--neon-violet)/0.08)] hover:text-foreground"
+          )}
+        >
+          <Settings2 className="h-4 w-4 shrink-0" />
+          Settings
+        </Link>
         <Button
           variant="ghost"
           size="sm"

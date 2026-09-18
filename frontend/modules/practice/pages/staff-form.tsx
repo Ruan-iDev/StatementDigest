@@ -7,7 +7,13 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { practiceApi } from "@/modules/practice/lib/api";
-import { STAFF_WAGE_PERIODS, type PracticeStaff, type StaffWrite } from "@/modules/practice/lib/types";
+import { TypeaheadSelect } from "@/components/ui/typeahead-select";
+import {
+  STAFF_WAGE_PERIODS,
+  type PracticeLedger,
+  type PracticeStaff,
+  type StaffWrite,
+} from "@/modules/practice/lib/types";
 
 type Props = {
   open: boolean;
@@ -36,6 +42,7 @@ const empty: StaffWrite = {
   wage_amount: "",
   wage_period: "week",
   wage_effective_on: "",
+  default_ledger_id: null,
   notes: "",
 };
 
@@ -45,11 +52,13 @@ export function StaffFormModal({ open, initial, onClose, onSave }: Props) {
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ledgers, setLedgers] = useState<PracticeLedger[]>([]);
 
   useEffect(() => {
     if (!open) return;
     setPhoto(null);
     setError(null);
+    practiceApi.ledgers.list("expense").then(setLedgers).catch(() => setLedgers([]));
     if (initial) {
       setForm({
         name: initial.name,
@@ -71,6 +80,7 @@ export function StaffFormModal({ open, initial, onClose, onSave }: Props) {
         wage_amount: initial.wage_amount != null && initial.wage_amount !== "" ? String(initial.wage_amount) : "",
         wage_period: initial.wage_period || "week",
         wage_effective_on: new Date().toISOString().slice(0, 10),
+        default_ledger_id: initial.default_ledger_id ?? null,
         notes: initial.notes || "",
       });
       let revoked = false;
@@ -212,6 +222,23 @@ export function StaffFormModal({ open, initial, onClose, onSave }: Props) {
               Dated when this rate starts for new wages. Payments already on project files keep the
               rate they were loaded at — later increases do not rewrite the books. Each change is
               kept on the staff wage paper trail for HR.
+            </p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Default wages ledger</Label>
+            <TypeaheadSelect
+              options={ledgers.map((l) => ({ id: String(l.id), label: l.name }))}
+              value={form.default_ledger_id ? String(form.default_ledger_id) : ""}
+              onChange={(id) => set("default_ledger_id", id ? Number(id) : null)}
+              placeholder="Type a ledger…"
+              emptyMessage="No expense ledgers yet. Add them in Configuration."
+              allowEmpty
+              emptyLabel="No default"
+              aria-label="Default wages ledger"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Used automatically when this person is paid on a project. You can still pick another
+              ledger on that payment.
             </p>
           </div>
           <div className="space-y-1.5">

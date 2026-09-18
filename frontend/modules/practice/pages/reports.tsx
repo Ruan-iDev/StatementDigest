@@ -8,12 +8,15 @@ import { cn, formatDate, formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { practiceApi } from "@/modules/practice/lib/api";
+import { PlMatrixView } from "@/components/pl-matrix-view";
 import {
   documentEditorHref,
   documentStatusLabel,
   type WorkflowReport,
   type WorkflowReportLine,
 } from "@/modules/practice/lib/types";
+
+type ReportView = "workflow" | "pl";
 
 function num(v: string | number | undefined | null): number {
   if (v == null || v === "") return 0;
@@ -100,6 +103,7 @@ function ReportTable({
 export function PracticeReportsPage() {
   const [data, setData] = useState<WorkflowReport | null>(null);
   const [fy, setFy] = useState<number | null>(null);
+  const [view, setView] = useState<ReportView>("workflow");
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -141,8 +145,8 @@ export function PracticeReportsPage() {
           <div>
             <h1 className="page-title">Work Flow reports</h1>
             <p className="page-subtitle max-w-2xl">
-              Quotes, invoices, payments received, project expenses and salaries for the selected
-              financial year. This is a Work Flow check-list — it does not change Ledger Flow.
+              Quotes, invoices, payments, expenses and salaries, or the same Profit & Loss matrix
+              as Ledger Flow for the selected financial year.
             </p>
           </div>
           <Button type="button" variant="outline" onClick={() => window.print()}>
@@ -154,30 +158,57 @@ export function PracticeReportsPage() {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {data && (
-        <div className="flex flex-wrap gap-2">
-          {years.map((y) => {
-            const active = y.fy_start_year === data.primary_fy_start_year;
-            return (
-              <button
-                key={y.fy_start_year}
-                type="button"
-                onClick={() => setFy(y.fy_start_year)}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
-                  active
-                    ? "border-[hsl(var(--neon-lime))] bg-[hsl(var(--neon-lime)/0.18)] text-foreground"
-                    : "border-border/70 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground"
-                )}
-              >
-                {y.label}
-                {y.is_current ? " · current" : ""}
-              </button>
-            );
-          })}
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {years.map((y) => {
+              const active = y.fy_start_year === data.primary_fy_start_year;
+              return (
+                <button
+                  key={y.fy_start_year}
+                  type="button"
+                  onClick={() => setFy(y.fy_start_year)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                    active
+                      ? "border-[hsl(var(--neon-lime))] bg-[hsl(var(--neon-lime)/0.18)] text-foreground"
+                      : "border-border/70 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  {y.label}
+                  {y.is_current ? " · current" : ""}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                { id: "workflow" as const, label: "Workflow" },
+                { id: "pl" as const, label: "Profit and Loss" },
+              ] as const
+            ).map((opt) => {
+              const active = view === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setView(opt.id)}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                    active
+                      ? "border-[hsl(var(--neon-violet))] bg-[hsl(var(--neon-violet)/0.18)] text-foreground"
+                      : "border-border/70 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {data && (
+      {data && view === "workflow" && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <Card className="section-panel neon-lime border-2">
             <CardHeader className="pb-2">
@@ -224,7 +255,11 @@ export function PracticeReportsPage() {
 
       {!data && !error && <p className="text-sm text-muted-foreground">Loading report…</p>}
 
-      {data && (
+      {view === "pl" && (
+        <PlMatrixView fyStartYear={fy} hideYearPicker />
+      )}
+
+      {data && view === "workflow" && (
         <>
           <Card>
             <CardHeader>

@@ -15,6 +15,7 @@ from app.modules.practice.models import (
     PracticeDocument,
     PracticeEntry,
     PracticeExpense,
+    PracticeLedger,
     PracticeProject,
     PracticeStaff,
     PracticeWage,
@@ -23,6 +24,8 @@ from app.modules.practice.schemas import (
     StatementTotals,
     WorkflowOverviewOut,
     WorkflowOverviewPoint,
+    WorkflowPLLine,
+    WorkflowPLOut,
     WorkflowReportLine,
     WorkflowReportOut,
     WorkflowYearOption,
@@ -335,6 +338,74 @@ def build_workflow_report(
             )
         )
 
+    ledger_rows = (
+        db.query(PracticeLedger)
+        .filter(PracticeLedger.user_profile_id == profile.id)
+        .all()
+    )
+    ledgers = {row.id: row.name for row in ledger_rows}
+    ledger_types = {row.id: row.type for row in ledger_rows}
+
+    def _add_pl(bucket: dict[int | None, list], ledger_id: int | None, amount: Decimal) -> None:
+        slot = bucket.setdefault(ledger_id, [Decimal("0"), 0])
+        slot[0] += amount
+        slot[1] += 1
+
+    income_pl: dict[int | None, list] = {}
+    expense_pl: dict[int | None, list] = {}
+    for row in docs:
+        when = _doc_date(row)
+        if not in_year(when):
+            continue
+        if row.kind == DocumentKind.INVOICE.value:
+            _add_pl(income_pl, row.income_ledger_id, to_decimal(row.amount))
+    for row in exp_rows:
+        when = _expense_date(row)
+        if not in_year(when):
+            continue
+        _add_pl(expense_pl, row.ledger_id, to_decimal(row.amount))
+    for row in wage_rows:
+        when = _wage_date(row)
+        if not in_year(when):
+            continue
+        amt = to_decimal(row.amount)
+        if amt == 0:
+            continue
+        _add_pl(expense_pl, getattr(row, "ledger_id", None), amt)
+    for row in pay_rows:
+        when = _payment_date(row)
+        if not in_year(when):
+            continue
+        lid = getattr(row, "ledger_id", None)
+        if not lid:
+            continue
+        amt = to_decimal(row.amount)
+        kind = ledger_types.get(lid)
+        if kind == "expense":
+            _add_pl(expense_pl, lid, -amt)
+        elif kind == "income":
+            _add_pl(income_pl, lid, amt)
+
+    def _pl_lines(bucket: dict[int | None, list]) -> list[WorkflowPLLine]:
+        lines: list[WorkflowPLLine] = []
+        for lid, (amt, count) in bucket.items():
+            name = ledgers.get(lid) if lid is not None else None
+            lines.append(
+                WorkflowPLLine(
+                    ledger_id=lid,
+                    ledger_name=name or "Unassigned",
+                    amount=quantize_money(amt),
+                    count=int(count),
+                )
+            )
+        lines.sort(key=lambda r: (r.ledger_name == "Unassigned", r.ledger_name.lower()))
+        return lines
+
+    income_lines = _pl_lines(income_pl)
+    expense_lines = _pl_lines(expense_pl)
+    income_total = sum((r.amount for r in income_lines), Decimal("0"))
+    expense_total = sum((r.amount for r in expense_lines), Decimal("0"))
+
     q_total = sum((r.amount for r in quotes), Decimal("0"))
     i_total = sum((r.amount for r in invoices), Decimal("0"))
     e_total = sum((r.amount for r in expenses), Decimal("0"))
@@ -361,5 +432,12 @@ def build_workflow_report(
             wages=quantize_money(w_total),
             net=quantize_money(i_total - e_total - w_total),
             payments=quantize_money(p_total),
+        ),
+        pl=WorkflowPLOut(
+            income=income_lines,
+            expenses=expense_lines,
+            income_total=quantize_money(income_total),
+            expense_total=quantize_money(expense_total),
+            net=quantize_money(income_total - expense_total),
         ),
     )

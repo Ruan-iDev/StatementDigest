@@ -282,29 +282,44 @@ function SectionBlock({
 }
 
 /** Profit & Loss — clean accounting layout (FY months × ledgers). */
-export function PlMatrixView() {
-  const [fyYear, setFyYear] = useState<number | null>(null);
-  const [useCurrentDefault, setUseCurrentDefault] = useState(true);
+export function PlMatrixView({
+  fyStartYear = null,
+  hideYearPicker = false,
+}: {
+  fyStartYear?: number | null;
+  hideYearPicker?: boolean;
+} = {}) {
+  const controlled = fyStartYear != null;
+  const [fyYear, setFyYear] = useState<number | null>(fyStartYear);
+  const [useCurrentDefault, setUseCurrentDefault] = useState(!controlled);
   const [report, setReport] = useState<PLMatrixReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!controlled) return;
+    setFyYear(fyStartYear);
+    setUseCurrentDefault(false);
+  }, [controlled, fyStartYear]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params =
-        !useCurrentDefault && fyYear != null ? { fy_start_year: fyYear } : {};
+      const year = controlled ? fyStartYear : !useCurrentDefault ? fyYear : null;
+      const params = year != null ? { fy_start_year: year } : {};
       const r = await api.reports.plMatrix(params);
       setReport(r);
-      setFyYear(r.fy_start_year);
-      setUseCurrentDefault(false);
+      if (!controlled) {
+        setFyYear(r.fy_start_year);
+        setUseCurrentDefault(false);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load P&L");
     } finally {
       setLoading(false);
     }
-  }, [fyYear, useCurrentDefault]);
+  }, [controlled, fyStartYear, fyYear, useCurrentDefault]);
 
   useEffect(() => {
     void load();
@@ -420,6 +435,7 @@ export function PlMatrixView() {
             </Button>
           </div>
 
+          {!hideYearPicker && (
           <div
             className="flex flex-wrap items-center gap-1.5 border-t px-2.5 py-2 sm:px-3"
             style={{
@@ -481,6 +497,7 @@ export function PlMatrixView() {
               </button>
             )}
           </div>
+          )}
         </div>
       )}
 

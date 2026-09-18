@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import get_active_profile, get_active_profile_id
-from app.models import Ledger, UserProfile
+from app.models import UserProfile
 from app.modules.practice.flags import get_or_create_settings, require_feature
+from app.modules.practice.ledgers import get_practice_ledger
 from app.modules.practice.templates import (
     bank_dict,
     get_or_create_template,
@@ -33,8 +34,12 @@ from app.modules.practice.models import (
     PracticeDocumentLine,
     PracticeEntry,
     PracticeExpense,
+    PracticeLedger,
     PracticeParty,
     PracticeProject,
+    PracticeStaff,
+    PracticeTravel,
+    PracticeWage,
 )
 from app.modules.practice.schemas import (
     AddressCard,
@@ -59,6 +64,9 @@ from app.modules.practice.schemas import (
     StatementTotals,
     SupplierSpendTotals,
     SupplierStatementOut,
+    TravelCreate,
+    TravelOut,
+    TravelUpdate,
     EntryOut,
 )
 from app.config import DATA_DIR
@@ -122,17 +130,8 @@ def _clean_notes_json(raw) -> list | None:
     return out
 
 
-def _ledger(db: Session, profile_id: int, ledger_id: int, expect_type: str | None = None) -> Ledger:
-    row = (
-        db.query(Ledger)
-        .filter(Ledger.id == ledger_id, Ledger.user_profile_id == profile_id)
-        .first()
-    )
-    if not row:
-        raise HTTPException(404, "Ledger not found in this workspace")
-    if expect_type and row.type != expect_type:
-        raise HTTPException(400, f"Pick a {expect_type} ledger")
-    return row
+def _ledger(db: Session, profile_id: int, ledger_id: int, expect_type: str | None = None) -> PracticeLedger:
+    return get_practice_ledger(db, profile_id, ledger_id, expect_type=expect_type)
 
 
 def _party(db: Session, profile_id: int, party_id: int | None) -> PracticeParty | None:
@@ -236,7 +235,7 @@ def _document_out(db: Session, row: PracticeDocument) -> DocumentOut:
     project_name = row.project.name if row.project else None
     income_name = None
     if row.income_ledger_id:
-        led = db.get(Ledger, row.income_ledger_id)
+        led = db.get(PracticeLedger, row.income_ledger_id)
         income_name = led.name if led else None
     source_number = None
     if row.source_quote_id:
@@ -306,7 +305,7 @@ def _assert_supplier(db: Session, profile_id: int, supplier_id: int | None) -> P
 
 
 def _expense_out(db: Session, row: PracticeExpense) -> ExpenseOut:
-    led = db.get(Ledger, row.ledger_id)
+    led = db.get(PracticeLedger, row.ledger_id)
     project = db.get(PracticeProject, row.project_id) if row.project_id else None
     supplier_id = getattr(row, "supplier_id", None)
     supplier = db.get(PracticeParty, supplier_id) if supplier_id else None
@@ -365,9 +364,13 @@ def _trail(
     body: str | None = None,
     amount: Decimal | None = None,
     document_id: int | None = None,
+    document_ids: list[int] | None = None,
     expense_id: int | None = None,
+    travel_id: int | None = None,
     occurred_on: date | None = None,
 ) -> None:
+    ids = document_ids or ([document_id] if document_id is not None else None)
+    first = ids[0] if ids else document_id
     db.add(
         PracticeEntry(
             user_profile_id=profile_id,
@@ -376,8 +379,10 @@ def _trail(
             title=title,
             body=body,
             amount=amount,
-            document_id=document_id,
+            document_id=first,
+            document_ids=ids,
             expense_id=expense_id,
+            travel_id=travel_id,
             occurred_on=occurred_on or date.today(),
             created_at=datetime.utcnow(),
         )
@@ -395,6 +400,22 @@ _PAY_METHOD_LABEL = {
 }
 
 
+def payment_invoice_ids(row: PracticeEntry) -> list[int]:
+    ids: list[int] = []
+    extra = getattr(row, "document_ids", None) or []
+    if isinstance(extra, list):
+        for raw in extra:
+            try:
+                n = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if n not in ids:
+                ids.append(n)
+    if row.document_id and row.document_id not in ids:
+        ids.insert(0, row.document_id)
+    return ids
+
+
 def sync_invoice_payment_status(db: Session, profile_id: int, invoice_id: int | None) -> None:
     """Mark an invoice Paid when a payment is tied to it; clear Paid if none remain."""
     if invoice_id is None:
@@ -410,20 +431,33 @@ def sync_invoice_payment_status(db: Session, profile_id: int, invoice_id: int | 
     )
     if not invoice or invoice.status == DocumentStatus.VOID.value:
         return
-    remaining = (
+    remaining = 0
+    payments = (
         db.query(PracticeEntry)
         .filter(
             PracticeEntry.user_profile_id == profile_id,
             PracticeEntry.entry_type == EntryType.PAYMENT.value,
-            PracticeEntry.document_id == invoice_id,
         )
-        .count()
+        .all()
     )
+    for pay in payments:
+        if invoice_id in payment_invoice_ids(pay):
+            remaining += 1
+            break
     if remaining:
         invoice.status = DocumentStatus.PAID.value
     elif invoice.status == DocumentStatus.PAID.value:
         invoice.status = DocumentStatus.DRAFT.value
     invoice.updated_at = datetime.utcnow()
+
+
+def sync_payment_invoices(db: Session, profile_id: int, invoice_ids: list[int | None]) -> None:
+    seen: set[int] = set()
+    for invoice_id in invoice_ids:
+        if invoice_id is None or invoice_id in seen:
+            continue
+        seen.add(invoice_id)
+        sync_invoice_payment_status(db, profile_id, invoice_id)
 
 
 def record_invoice_payment(
@@ -461,6 +495,7 @@ def record_invoice_payment(
             " · ".join(x for x in bits if x) or None,
             amount=_money(amount),
             document_id=invoice.id,
+            document_ids=[invoice.id],
             occurred_on=day,
         )
     invoice.status = DocumentStatus.PAID.value
@@ -503,13 +538,13 @@ def prepare_document(
     if kind != DocumentKind.RFQ.value and project and party is None and project.client:
         party = project.client
     sales = (
-        db.query(Ledger)
+        db.query(PracticeLedger)
         .filter(
-            Ledger.user_profile_id == profile.id,
-            Ledger.type == "income",
-            Ledger.is_archived.is_(False),
+            PracticeLedger.user_profile_id == profile.id,
+            PracticeLedger.type == "income",
+            PracticeLedger.is_archived.is_(False),
         )
-        .order_by(Ledger.sort_order.asc(), Ledger.name.asc())
+        .order_by(PracticeLedger.sort_order.asc(), PracticeLedger.name.asc())
         .all()
     )
     default_led = next((l for l in sales if "sales" in l.name.lower()), sales[0] if sales else None)
@@ -1228,6 +1263,173 @@ def update_expense(
     return _expense_out(db, row)
 
 
+def _travel_out(db: Session, row: PracticeTravel) -> TravelOut:
+    staff = db.get(PracticeStaff, row.staff_id)
+    led = db.get(PracticeLedger, row.ledger_id)
+    return TravelOut(
+        id=row.id,
+        project_id=row.project_id,
+        staff_id=row.staff_id,
+        staff_name=staff.name if staff else None,
+        ledger_id=row.ledger_id,
+        ledger_name=led.name if led else None,
+        km=_money(row.km),
+        price_per_litre=to_decimal(row.price_per_litre),
+        amount=_money(row.amount),
+        occurred_on=row.occurred_on,
+        notes=row.notes,
+        created_at=row.created_at,
+    )
+
+
+def _travel_trail_body(km, price_per_litre, notes: str | None) -> str | None:
+    bits = [
+        f"{to_decimal(km)} km",
+        f"R {to_decimal(price_per_litre)}/L" if to_decimal(price_per_litre) > 0 else None,
+        (notes or "").strip() or None,
+    ]
+    return " · ".join(x for x in bits if x) or None
+
+
+def _sync_travel_trail(db: Session, profile_id: int, row: PracticeTravel) -> None:
+    trail = (
+        db.query(PracticeEntry)
+        .filter(
+            PracticeEntry.user_profile_id == profile_id,
+            PracticeEntry.travel_id == row.id,
+        )
+        .first()
+    )
+    if not trail:
+        return
+    staff = db.get(PracticeStaff, row.staff_id)
+    trail.title = f"Travel · {staff.name if staff else 'Staff'}"
+    trail.body = _travel_trail_body(row.km, row.price_per_litre, row.notes)
+    trail.amount = row.amount
+    trail.occurred_on = row.occurred_on
+
+
+@router.get("/travels", response_model=list[TravelOut])
+def list_travels(
+    project_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    require_feature(db, profile_id, "projects")
+    q = db.query(PracticeTravel).filter(PracticeTravel.user_profile_id == profile_id)
+    if project_id is not None:
+        q = q.filter(PracticeTravel.project_id == project_id)
+    return [_travel_out(db, r) for r in q.order_by(PracticeTravel.occurred_on.desc(), PracticeTravel.id.desc()).all()]
+
+
+@router.post("/travels", response_model=TravelOut, status_code=201)
+def create_travel(
+    body: TravelCreate,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    require_feature(db, profile_id, "projects")
+    project = _project(db, profile_id, body.project_id)
+    if not project:
+        raise HTTPException(400, "Travel must sit on a project file")
+    staff = (
+        db.query(PracticeStaff)
+        .filter(PracticeStaff.id == body.staff_id, PracticeStaff.user_profile_id == profile_id)
+        .first()
+    )
+    if not staff:
+        raise HTTPException(404, "Staff member not found")
+    _ledger(db, profile_id, body.ledger_id, expect_type="expense")
+    km = to_decimal(body.km)
+    price = to_decimal(body.price_per_litre)
+    amount = _money(body.amount)
+    if km < 0:
+        raise HTTPException(400, "Mileage cannot be negative")
+    if price < 0:
+        raise HTTPException(400, "Price per litre cannot be negative")
+    if amount < 0:
+        raise HTTPException(400, "Amount paid cannot be negative")
+    row = PracticeTravel(
+        user_profile_id=profile_id,
+        project_id=body.project_id,
+        staff_id=staff.id,
+        ledger_id=body.ledger_id,
+        km=km,
+        price_per_litre=price,
+        amount=amount,
+        occurred_on=body.occurred_on or date.today(),
+        notes=(body.notes or "").strip() or None,
+    )
+    db.add(row)
+    db.flush()
+    _trail(
+        db,
+        profile_id,
+        project.id,
+        EntryType.TRAVEL.value,
+        f"Travel · {staff.name}",
+        _travel_trail_body(km, price, row.notes),
+        amount,
+        travel_id=row.id,
+        occurred_on=row.occurred_on,
+    )
+    project.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _travel_out(db, row)
+
+
+@router.patch("/travels/{travel_id}", response_model=TravelOut)
+def update_travel(
+    travel_id: int,
+    body: TravelUpdate,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    require_feature(db, profile_id, "projects")
+    row = (
+        db.query(PracticeTravel)
+        .filter(PracticeTravel.id == travel_id, PracticeTravel.user_profile_id == profile_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Travel line not found")
+    data = body.model_dump(exclude_unset=True)
+    if "staff_id" in data and data["staff_id"] is not None:
+        staff = (
+            db.query(PracticeStaff)
+            .filter(PracticeStaff.id == data["staff_id"], PracticeStaff.user_profile_id == profile_id)
+            .first()
+        )
+        if not staff:
+            raise HTTPException(404, "Staff member not found")
+    if "ledger_id" in data and data["ledger_id"] is not None:
+        _ledger(db, profile_id, data["ledger_id"], expect_type="expense")
+    if "km" in data and data["km"] is not None:
+        data["km"] = to_decimal(data["km"])
+        if data["km"] < 0:
+            raise HTTPException(400, "Mileage cannot be negative")
+    if "price_per_litre" in data and data["price_per_litre"] is not None:
+        data["price_per_litre"] = to_decimal(data["price_per_litre"])
+        if data["price_per_litre"] < 0:
+            raise HTTPException(400, "Price per litre cannot be negative")
+    if "amount" in data and data["amount"] is not None:
+        data["amount"] = _money(data["amount"])
+        if data["amount"] < 0:
+            raise HTTPException(400, "Amount paid cannot be negative")
+    if "notes" in data and data["notes"] is not None:
+        data["notes"] = data["notes"].strip() or None
+    for key, value in data.items():
+        setattr(row, key, value)
+    _sync_travel_trail(db, profile_id, row)
+    project = db.get(PracticeProject, row.project_id)
+    if project:
+        project.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _travel_out(db, row)
+
+
 def _supplier_spend(db: Session, profile_id: int, party_id: int):
     require_feature(db, profile_id, "projects")
     party = _party(db, profile_id, party_id)
@@ -1354,11 +1556,33 @@ def project_statement(
         .order_by(PracticeEntry.occurred_on.asc(), PracticeEntry.id.asc())
         .all()
     )
+    wages = (
+        db.query(PracticeWage)
+        .filter(
+            PracticeWage.user_profile_id == profile.id,
+            PracticeWage.project_id == project_id,
+        )
+        .order_by(PracticeWage.occurred_on.asc(), PracticeWage.id.asc())
+        .all()
+    )
+    travels = (
+        db.query(PracticeTravel)
+        .filter(
+            PracticeTravel.user_profile_id == profile.id,
+            PracticeTravel.project_id == project_id,
+        )
+        .order_by(PracticeTravel.occurred_on.asc(), PracticeTravel.id.asc())
+        .all()
+    )
 
     q_total = sum((_money(d.amount) for d in quotes), Decimal("0.00"))
     i_total = sum((_money(d.amount) for d in invoices), Decimal("0.00"))
     e_total = sum((_money(e.amount) for e in expenses), Decimal("0.00"))
     p_total = sum((_money(p.amount or 0) for p in payments), Decimal("0.00"))
+    w_total = sum((_money(w.amount) for w in wages), Decimal("0.00"))
+    issuer = resolve_issuer(db, profile)
+
+    from app.modules.practice.staff import _wage_out
 
     return ProjectStatementOut(
         project=ProjectOut(
@@ -1372,7 +1596,7 @@ def project_statement(
             due_on=project.due_on,
             summary=project.summary,
             is_archived=project.is_archived,
-            entry_count=len(notes) + len(quotes) + len(invoices) + len(expenses) + len(payments),
+            entry_count=len(notes) + len(quotes) + len(invoices) + len(expenses) + len(payments) + len(wages),
             created_at=project.created_at,
             updated_at=project.updated_at,
         ),
@@ -1381,13 +1605,17 @@ def project_statement(
         invoices=[_document_out(db, d) for d in invoices],
         expenses=[_expense_out(db, e) for e in expenses],
         payments=[EntryOut.model_validate(p) for p in payments],
+        wages=[_wage_out(db, w) for w in wages],
+        travels=[_travel_out(db, t) for t in travels],
         totals=StatementTotals(
             quotes=_money(q_total),
             invoices=_money(i_total),
             expenses=_money(e_total),
+            wages=_money(w_total),
             net=_money(i_total - e_total),
             payments=_money(p_total),
         ),
         currency=profile.currency or "ZAR",
         has_logo=resolve_logo_path(db, profile)[0] is not None,
+        company_name=(issuer.name if issuer else None) or profile.name,
     )

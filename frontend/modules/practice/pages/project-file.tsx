@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Plus, ScrollText, X } from "lucide-react";
-import { api, type Ledger } from "@/lib/api";
-import { formatMoney } from "@/lib/utils";
-import { formatWageDays, staffWagePeriodLabel } from "@/modules/practice/lib/types";
+import { cn, formatMoney } from "@/lib/utils";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,16 +22,20 @@ import {
   clientFileHref,
   documentEditorHref,
   documentStatusLabel,
+  formatWageDays,
   RFQ_EXPANSION,
+  staffWagePeriodLabel,
   supplierFileHref,
   type DocumentKind,
   type EntryType,
   type PracticeDocument,
   type PracticeEntry,
   type PracticeExpense,
+  type PracticeLedger,
   type PracticeParty,
   type PracticeProjectDetail,
   type PracticeStaff,
+  type PracticeTravel,
   type PracticeWage,
   type ProjectStatus,
   staffFileHref,
@@ -57,9 +60,29 @@ const ENTRY_LABEL: Record<EntryType, string> = {
   task: "Task",
   meeting: "Meeting",
   wage: "Wages",
+  travel: "Travel",
 };
 
-type AddKind = "note" | "quote" | "invoice" | "rfq" | "expense" | "payment" | "meeting" | "wage";
+const ENTRY_TILE: Partial<Record<EntryType, string>> = {
+  payment:
+    "font-bold border-[hsl(var(--neon-lime)/0.5)] bg-[hsl(var(--neon-lime)/0.22)] text-[hsl(var(--neon-lime))]",
+  invoice:
+    "font-bold border-[hsl(var(--neon-blue)/0.5)] bg-[hsl(var(--neon-blue)/0.22)] text-[hsl(var(--neon-blue))]",
+  quote:
+    "font-bold border-[hsl(var(--neon-violet)/0.5)] bg-[hsl(var(--neon-violet)/0.22)] text-[hsl(var(--neon-violet))]",
+  expense:
+    "font-bold border-[hsl(var(--danger)/0.5)] bg-[hsl(var(--danger)/0.18)] text-[hsl(var(--danger))]",
+  wage:
+    "font-bold border-[hsl(24_82%_40%/0.55)] bg-[hsl(24_82%_40%/0.18)] text-[hsl(24_82%_36%)] dark:border-[hsl(28_95%_58%/0.5)] dark:bg-[hsl(28_90%_50%/0.22)] dark:text-[hsl(28_95%_62%)]",
+  travel:
+    "font-bold border-[hsl(var(--neon-cyan)/0.5)] bg-[hsl(var(--neon-cyan)/0.18)] text-[hsl(var(--neon-cyan))]",
+  note:
+    "font-bold border-[hsl(48_90%_42%/0.55)] bg-[hsl(48_90%_48%/0.28)] text-[hsl(42_72%_28%)] dark:border-[hsl(48_95%_58%/0.5)] dark:bg-[hsl(48_90%_52%/0.22)] dark:text-[hsl(48_95%_64%)]",
+  meeting:
+    "font-bold border-[hsl(48_90%_42%/0.55)] bg-[hsl(48_90%_48%/0.28)] text-[hsl(42_72%_28%)] dark:border-[hsl(48_95%_58%/0.5)] dark:bg-[hsl(48_90%_52%/0.22)] dark:text-[hsl(48_95%_64%)]",
+};
+
+type AddKind = "note" | "quote" | "invoice" | "rfq" | "expense" | "payment" | "meeting" | "wage" | "travel";
 
 type WageLineDraft = { description: string; amount: string };
 
@@ -185,6 +208,16 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
+function addCalendarDays(iso: string, extra: number): string {
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  d.setDate(d.getDate() + extra);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function nowTime(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -233,7 +266,9 @@ export function PracticeProjectFilePage() {
   const id = Number(search.get("id") || "");
   const [project, setProject] = useState<PracticeProjectDetail | null>(null);
   const [clients, setClients] = useState<PracticeParty[]>([]);
-  const [ledgers, setLedgers] = useState<Ledger[]>([]);
+  const [ledgers, setLedgers] = useState<PracticeLedger[]>([]);
+  const [wageLedgerId, setWageLedgerId] = useState("");
+  const [todoDraft, setTodoDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -247,24 +282,40 @@ export function PracticeProjectFilePage() {
   const [expenseSupplierTrading, setExpenseSupplierTrading] = useState<string | null>(null);
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseLedgerId, setExpenseLedgerId] = useState("");
+  const [addingExpenseLedger, setAddingExpenseLedger] = useState(false);
+  const [newExpenseLedgerName, setNewExpenseLedgerName] = useState("");
+  const [addingExpenseVendor, setAddingExpenseVendor] = useState(false);
+  const [newExpenseVendorName, setNewExpenseVendorName] = useState("");
+  const [vendorPickerKey, setVendorPickerKey] = useState(0);
   const [expenseDate, setExpenseDate] = useState(todayIso);
   const [projectExpenses, setProjectExpenses] = useState<PracticeExpense[]>([]);
   const [editingEntry, setEditingEntry] = useState<PracticeEntry | null>(null);
   const [linkDocs, setLinkDocs] = useState<PracticeDocument[]>([]);
   const [linkQuery, setLinkQuery] = useState("");
   const [linkBusy, setLinkBusy] = useState(false);
+  const [linkClientOnly, setLinkClientOnly] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payDate, setPayDate] = useState(todayIso);
   const [payMethod, setPayMethod] = useState("eft");
   const [payNote, setPayNote] = useState("");
-  const [payInvoiceId, setPayInvoiceId] = useState("");
+  const [payInvoiceIds, setPayInvoiceIds] = useState<number[]>([]);
+  const [payLedgerId, setPayLedgerId] = useState("");
   const [projectInvoices, setProjectInvoices] = useState<PracticeDocument[]>([]);
+  const [projectQuotes, setProjectQuotes] = useState<PracticeDocument[]>([]);
   const [meetTitle, setMeetTitle] = useState("");
   const [meetBody, setMeetBody] = useState("");
   const [meetDate, setMeetDate] = useState(todayIso);
   const [meetTime, setMeetTime] = useState(nowTime);
   const [staffList, setStaffList] = useState<PracticeStaff[]>([]);
   const [projectWages, setProjectWages] = useState<PracticeWage[]>([]);
+  const [projectTravels, setProjectTravels] = useState<PracticeTravel[]>([]);
+  const [travelStaffId, setTravelStaffId] = useState("");
+  const [travelLedgerId, setTravelLedgerId] = useState("");
+  const [travelKm, setTravelKm] = useState("");
+  const [travelPrice, setTravelPrice] = useState("");
+  const [travelAmount, setTravelAmount] = useState("");
+  const [travelDate, setTravelDate] = useState(todayIso);
+  const [travelNote, setTravelNote] = useState("");
   const [wageStaffId, setWageStaffId] = useState("");
   const [wageAmount, setWageAmount] = useState("");
   const [wageDays, setWageDays] = useState("");
@@ -274,6 +325,9 @@ export function PracticeProjectFilePage() {
   const [wageAdditions, setWageAdditions] = useState<WageLineDraft[]>([]);
   const [wageDate, setWageDate] = useState(todayIso);
   const [wageNote, setWageNote] = useState("");
+  const [wageOverride, setWageOverride] = useState(false);
+  const [wageAbsent, setWageAbsent] = useState(false);
+  const [wageReason, setWageReason] = useState("");
 
   const validId = Number.isFinite(id) && id > 0;
 
@@ -284,28 +338,34 @@ export function PracticeProjectFilePage() {
     { type: "rfq", label: "RFQ", show: true },
     { type: "expense", label: "Expense", show: true },
     { type: "wage", label: "Wages", show: true },
+    { type: "travel", label: "Traveling", show: true },
     { type: "payment", label: "Received payment", show: true },
     { type: "meeting", label: "Meeting", show: true },
   ];
 
   async function load() {
     if (!validId) return;
-    const [detail, partyList, ledgerList, expenseList, staffRows, wageRows, invoiceList] = await Promise.all([
-      practiceApi.projects.get(id),
-      practiceApi.parties.list("client"),
-      api.ledgers.list(),
-      practiceApi.expenses.list(id),
-      practiceApi.staff.list(),
-      practiceApi.wages.list({ projectId: id }),
-      flags.invoices_enabled ? practiceApi.documents.list("invoice", id) : Promise.resolve([]),
-    ]);
+    const [detail, partyList, ledgerList, expenseList, staffRows, wageRows, travelRows, invoiceList, quoteList] =
+      await Promise.all([
+        practiceApi.projects.get(id),
+        practiceApi.parties.list("client"),
+        practiceApi.ledgers.list(),
+        practiceApi.expenses.list(id),
+        practiceApi.staff.list(),
+        practiceApi.wages.list({ projectId: id }).catch(() => [] as PracticeWage[]),
+        practiceApi.travels.list(id).catch(() => [] as PracticeTravel[]),
+        flags.invoices_enabled ? practiceApi.documents.list("invoice", id) : Promise.resolve([]),
+        flags.quotes_enabled ? practiceApi.documents.list("quote", id) : Promise.resolve([]),
+      ]);
     setProject(detail);
     setClients(partyList);
     setLedgers(ledgerList);
     setProjectExpenses(expenseList);
     setStaffList(staffRows);
     setProjectWages(wageRows);
+    setProjectTravels(travelRows);
     setProjectInvoices(invoiceList);
+    setProjectQuotes(quoteList);
   }
 
   useEffect(() => {
@@ -317,6 +377,31 @@ export function PracticeProjectFilePage() {
     load().catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to open file"));
   }, [id, validId, ready, flags.projects_enabled]);
 
+  const submitTrailRef = useRef<() => void>(() => {});
+  const openAddRef = useRef<(type?: AddKind) => void>(() => {});
+  const trailDateRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "TEXTAREA" && !addOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (addOpen) submitTrailRef.current();
+      else openAddRef.current();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [addOpen]);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    const id = window.setTimeout(() => {
+      trailDateRef.current?.focus();
+    }, 30);
+    return () => window.clearTimeout(id);
+  }, [addOpen, addType]);
+
   if (ready && !flags.projects_enabled) {
     return <FeatureOffPage title="Projects" />;
   }
@@ -324,9 +409,101 @@ export function PracticeProjectFilePage() {
   const entries: PracticeEntry[] = trailOldestFirst(project?.entries ?? []);
   const expenseLedgers = ledgers.filter((l) => l.type === "expense" && !l.is_archived);
 
+  function defaultWageLedgerId(list: PracticeLedger[] = expenseLedgers): string {
+    const hit = list.find((l) => /wage|salar/i.test(l.name));
+    return hit ? String(hit.id) : list[0] ? String(list[0].id) : "";
+  }
+
+  function defaultTravelLedgerId(list: PracticeLedger[] = expenseLedgers): string {
+    const hit = list.find((l) => /fuel|petrol|diesel|travel/i.test(l.name));
+    return hit ? String(hit.id) : list[0] ? String(list[0].id) : "";
+  }
+
+  async function pickOrCreateExpenseLedger(idOrName: string): Promise<string> {
+    if (!idOrName) return "";
+    if (ledgers.some((l) => String(l.id) === idOrName)) return idOrName;
+    const created = await practiceApi.ledgers.create({ name: idOrName.trim(), type: "expense" });
+    setLedgers((prev) => [...prev, created]);
+    return String(created.id);
+  }
+
+  async function saveNewExpenseVendor() {
+    const name = newExpenseVendorName.trim();
+    if (!name) return;
+    try {
+      const created = await practiceApi.parties.create("supplier", { name, party_type: "individual" });
+      setExpenseSupplierId(created.id);
+      setExpenseSupplierName(created.name);
+      setExpenseSupplierTrading(created.trading_name);
+      setAddingExpenseVendor(false);
+      setNewExpenseVendorName("");
+      setVendorPickerKey((k) => k + 1);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not add vendor");
+    }
+  }
+
+  async function saveNewExpenseLedger() {
+    const name = newExpenseLedgerName.trim();
+    if (!name) return;
+    try {
+      const id = await pickOrCreateExpenseLedger(name);
+      setExpenseLedgerId(id);
+      setAddingExpenseLedger(false);
+      setNewExpenseLedgerName("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not add ledger");
+    }
+  }
+
   function closeAdd() {
     setAddOpen(false);
     setEditingEntry(null);
+  }
+
+  function trailLedgerName(entry: PracticeEntry): string | null {
+    if (entry.entry_type === "expense") {
+      const ex = projectExpenses.find((row) => row.id === entry.expense_id);
+      return ex?.ledger_name || null;
+    }
+    if (entry.entry_type === "invoice") {
+      const inv = projectInvoices.find((d) => d.id === entry.document_id);
+      return inv?.income_ledger_name || null;
+    }
+    if (entry.entry_type === "quote") {
+      const quote = projectQuotes.find((d) => d.id === entry.document_id);
+      return quote?.income_ledger_name || null;
+    }
+    if (entry.entry_type === "wage") {
+      const w = projectWages.find((row) => row.id === entry.wage_id);
+      return w?.ledger_name || null;
+    }
+    if (entry.entry_type === "travel") {
+      const t = projectTravels.find((row) => row.id === entry.travel_id);
+      return t?.ledger_name || null;
+    }
+    if (entry.entry_type === "payment" && entry.ledger_id) {
+      const led = ledgers.find((l) => l.id === entry.ledger_id);
+      if (!led) return null;
+      return led.type === "expense" ? `${led.name} · credit` : led.name;
+    }
+    return null;
+  }
+
+  function matchesLinkDoc(d: PracticeDocument): boolean {
+    if (
+      linkClientOnly &&
+      addType !== "rfq" &&
+      project?.client_id &&
+      d.party_id !== project.client_id
+    ) {
+      return false;
+    }
+    const q = linkQuery.trim().toLowerCase();
+    if (!q) return true;
+    return [d.number, d.title, d.party_name]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q));
   }
 
   function openAdd(type: AddKind = "note", opts?: { invoiceId?: number }) {
@@ -344,6 +521,15 @@ export function PracticeProjectFilePage() {
       setMeetDate(todayIso());
       setMeetTime(nowTime());
     }
+    if (type === "travel") {
+      setTravelDate(todayIso());
+      setTravelStaffId("");
+      setTravelKm("");
+      setTravelPrice("");
+      setTravelAmount("");
+      setTravelNote("");
+      setTravelLedgerId(defaultTravelLedgerId());
+    }
     if (type === "wage") {
       setWageDate(todayIso());
       setWageStaffId("");
@@ -354,9 +540,14 @@ export function PracticeProjectFilePage() {
       setWageDeductions([]);
       setWageAdditions([]);
       setWageNote("");
+      setWageOverride(false);
+      setWageAbsent(false);
+      setWageReason("");
+      setWageLedgerId(defaultWageLedgerId());
     }
     if ((type === "quote" || type === "invoice" || type === "rfq") && project) {
       setLinkQuery("");
+      setLinkClientOnly(type !== "rfq" && Boolean(project.client_id));
       setLinkBusy(true);
       practiceApi.documents
         .list(type)
@@ -369,7 +560,8 @@ export function PracticeProjectFilePage() {
       setPayDate(todayIso());
       setPayMethod("eft");
       setPayNote("");
-      setPayInvoiceId(opts?.invoiceId ? String(opts.invoiceId) : "");
+      setPayInvoiceIds(opts?.invoiceId ? [opts.invoiceId] : []);
+      setPayLedgerId("");
       practiceApi.documents
         .list("invoice", project.id)
         .then((rows) => {
@@ -377,20 +569,21 @@ export function PracticeProjectFilePage() {
           if (opts?.invoiceId) {
             const inv = rows.find((d) => d.id === opts.invoiceId);
             if (inv) {
-              setPayInvoiceId(String(inv.id));
+              setPayInvoiceIds([inv.id]);
               setPayAmount(String(inv.amount));
             }
             return;
           }
           const unpaid = rows.filter((d) => d.status !== "paid" && d.status !== "void");
           if (unpaid.length === 1) {
-            setPayInvoiceId(String(unpaid[0].id));
+            setPayInvoiceIds([unpaid[0].id]);
             setPayAmount(String(unpaid[0].amount));
           }
         })
         .catch(() => setProjectInvoices([]));
     }
   }
+  openAddRef.current = () => openAdd(addType);
 
   function openEdit(entry: PracticeEntry) {
     if (!isEditableTrail(entry)) return;
@@ -402,6 +595,16 @@ export function PracticeProjectFilePage() {
       setNoteBody(entry.body || "");
       setNoteDate(entry.occurred_on || todayIso());
     }
+    if (entry.entry_type === "travel") {
+      const t = projectTravels.find((row) => row.id === entry.travel_id);
+      setTravelStaffId(t ? String(t.staff_id) : "");
+      setTravelLedgerId(t ? String(t.ledger_id) : defaultTravelLedgerId());
+      setTravelKm(t ? String(t.km) : "");
+      setTravelPrice(t ? String(t.price_per_litre) : "");
+      setTravelAmount(t ? String(t.amount) : entry.amount != null ? String(entry.amount) : "");
+      setTravelDate(t?.occurred_on || entry.occurred_on || todayIso());
+      setTravelNote(t?.notes || "");
+    }
     if (entry.entry_type === "meeting") {
       setMeetTitle(entry.title);
       setMeetBody(entry.body || "");
@@ -409,11 +612,18 @@ export function PracticeProjectFilePage() {
       setMeetTime(entry.occurred_time || nowTime());
     }
     if (entry.entry_type === "payment") {
+      const allocated = [
+        ...(entry.document_ids || []),
+        ...(entry.document_id && !(entry.document_ids || []).includes(entry.document_id)
+          ? [entry.document_id]
+          : []),
+      ];
       setPayAmount(entry.amount != null ? String(entry.amount) : "");
       setPayDate(entry.occurred_on || todayIso());
-      setPayInvoiceId(entry.document_id ? String(entry.document_id) : "");
+      setPayInvoiceIds(allocated);
       setPayNote(entry.body || "");
       setPayMethod("eft");
+      setPayLedgerId(entry.ledger_id ? String(entry.ledger_id) : "");
       if (project) {
         practiceApi.documents
           .list("invoice", project.id)
@@ -458,6 +668,10 @@ export function PracticeProjectFilePage() {
       );
       setWageDate(w?.occurred_on || entry.occurred_on || todayIso());
       setWageNote(w?.notes || "");
+      setWageOverride(w?.kind === "commission");
+      setWageAbsent(w?.kind === "absence");
+      setWageReason(w?.override_reason || "");
+      setWageLedgerId(w?.ledger_id ? String(w.ledger_id) : defaultWageLedgerId());
     }
   }
 
@@ -501,6 +715,7 @@ export function PracticeProjectFilePage() {
         started_on: patch.started_on !== undefined ? patch.started_on : project.started_on,
         due_on: patch.due_on !== undefined ? patch.due_on : project.due_on,
         summary: patch.summary ?? project.summary,
+        checklist: patch.checklist ?? project.checklist ?? [],
       });
       setProject(next);
     } catch (e: unknown) {
@@ -549,8 +764,13 @@ export function PracticeProjectFilePage() {
     setSaving(true);
     try {
       setError(null);
+      const ledgerId = await pickOrCreateExpenseLedger(expenseLedgerId);
+      if (!ledgerId) {
+        setError("Pick or type an expense ledger");
+        return;
+      }
       const payload = {
-        ledger_id: Number(expenseLedgerId),
+        ledger_id: Number(ledgerId),
         description: expenseDesc.trim(),
         amount: Number(expenseAmount),
         incurred_on: expenseDate || todayIso(),
@@ -574,6 +794,10 @@ export function PracticeProjectFilePage() {
       setExpenseSupplierTrading(null);
       setExpenseAmount("");
       setExpenseDate(todayIso());
+      setAddingExpenseLedger(false);
+      setNewExpenseLedgerName("");
+      setAddingExpenseVendor(false);
+      setNewExpenseVendorName("");
       closeAdd();
       await load();
     } catch (e: unknown) {
@@ -581,6 +805,47 @@ export function PracticeProjectFilePage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function invoicePayAmount(invoiceId: number): number {
+    const inv = projectInvoices.find((d) => d.id === invoiceId);
+    return inv ? Number(inv.amount) || 0 : 0;
+  }
+
+  function togglePayInvoice(invoiceId: number, on: boolean) {
+    if (!on) {
+      setPayInvoiceIds(payInvoiceIds.filter((id) => id !== invoiceId));
+      return;
+    }
+    if (payInvoiceIds.includes(invoiceId)) return;
+    const amt = invoicePayAmount(invoiceId);
+    const received = parseMoneyInput(payAmount);
+    const allocated = payInvoiceIds.reduce((sum, id) => sum + invoicePayAmount(id), 0);
+    const remaining = roundCents(received - allocated);
+    if (amt > remaining + 0.005) return;
+    setPayInvoiceIds([...payInvoiceIds, invoiceId]);
+  }
+
+  function selectUnpaidInvoices() {
+    const unpaid = projectInvoices.filter((d) => d.status !== "paid" && d.status !== "void");
+    const received = parseMoneyInput(payAmount);
+    if (!(received > 0)) {
+      const ids = unpaid.map((d) => d.id);
+      const sum = roundCents(unpaid.reduce((s, d) => s + (Number(d.amount) || 0), 0));
+      setPayInvoiceIds(ids);
+      if (sum > 0) setPayAmount(String(sum));
+      return;
+    }
+    const next: number[] = [];
+    let left = received;
+    for (const inv of unpaid) {
+      const amt = Number(inv.amount) || 0;
+      if (amt > 0 && amt <= left + 0.005) {
+        next.push(inv.id);
+        left = roundCents(left - amt);
+      }
+    }
+    setPayInvoiceIds(next);
   }
 
   async function addPayment() {
@@ -601,38 +866,54 @@ export function PracticeProjectFilePage() {
           : payMethod === "card"
             ? "Card"
             : "Other";
-    const invoice = projectInvoices.find((d) => String(d.id) === payInvoiceId);
+    const invoices = projectInvoices.filter((d) => payInvoiceIds.includes(d.id));
+    const numbers = invoices.map((d) => d.number);
+    const against = numbers.length ? `against ${numbers.join(", ")}` : null;
+    const payLedger = ledgers.find((l) => String(l.id) === payLedgerId);
+    const ledgerBit = payLedger
+      ? payLedger.type === "expense"
+        ? `credits ${payLedger.name}`
+        : `to ${payLedger.name}`
+      : null;
     const bits = [
       payDate ? `Received ${payDate}` : null,
       methodLabel,
-      invoice ? `against ${invoice.number}` : null,
+      against,
+      ledgerBit,
       payNote.trim() || null,
     ].filter(Boolean);
-    const title = invoice ? `Payment · ${invoice.number}` : "Payment received";
+    let title =
+      numbers.length > 0
+        ? `Payment · ${numbers.join(", ")}`
+        : payLedger
+          ? `Payment · ${payLedger.name}`
+          : "Payment received";
+    if (title.length > 240) title = `Payment · ${numbers.length} invoices`;
     setSaving(true);
     try {
       setError(null);
+      const payload = {
+        title,
+        body: bits.join(" · ") || null,
+        amount,
+        document_id: invoices[0]?.id ?? null,
+        document_ids: invoices.map((d) => d.id),
+        ledger_id: payLedgerId ? Number(payLedgerId) : null,
+        occurred_on: payDate || todayIso(),
+      };
       if (editingEntry) {
-        await practiceApi.projects.updateEntry(project.id, editingEntry.id, {
-          title,
-          body: editingEntry.entry_type === "payment" ? bits.join(" · ") || null : payNote.trim() || null,
-          amount,
-          document_id: invoice ? invoice.id : null,
-          occurred_on: payDate || todayIso(),
-        });
+        await practiceApi.projects.updateEntry(project.id, editingEntry.id, payload);
       } else {
         await practiceApi.projects.addEntry(project.id, {
           entry_type: "payment",
-          title,
-          body: bits.join(" · ") || undefined,
-          amount,
-          document_id: invoice ? invoice.id : null,
-          occurred_on: payDate || todayIso(),
+          ...payload,
+          body: payload.body || undefined,
         });
       }
       setPayAmount("");
       setPayNote("");
-      setPayInvoiceId("");
+      setPayInvoiceIds([]);
+      setPayLedgerId("");
       closeAdd();
       await load();
     } catch (e: unknown) {
@@ -689,16 +970,27 @@ export function PracticeProjectFilePage() {
   const daysWorked = parseMoneyInput(wageDays);
   const deductionTotal = wageLineTotal(wageDeductions);
   const additionTotal = wageLineTotal(wageAdditions);
-  const wageGross = isDayWage
-    ? roundCents(daysWorked * shownRate)
-    : parseMoneyInput(wageAmount);
-  const wageNet = roundCents(wageGross + additionTotal - deductionTotal);
-  const wageCanSave =
-    Boolean(wageStaffId) &&
-    wageLinesComplete(wageDeductions) &&
-    wageLinesComplete(wageAdditions) &&
-    wageNet > 0 &&
-    (isDayWage ? daysWorked > 0 && shownRate > 0 : parseMoneyInput(wageAmount) > 0);
+  const wageGross = wageAbsent
+    ? 0
+    : wageOverride
+      ? parseMoneyInput(wageAmount)
+      : isDayWage
+        ? roundCents(daysWorked * shownRate)
+        : parseMoneyInput(wageAmount);
+  const wageNet = wageAbsent
+    ? 0
+    : wageOverride
+      ? roundCents(wageGross)
+      : roundCents(wageGross + additionTotal - deductionTotal);
+  const wageCanSave = wageAbsent
+    ? Boolean(wageStaffId) && daysWorked > 0
+    : wageOverride
+      ? Boolean(wageStaffId) && parseMoneyInput(wageAmount) > 0 && wageReason.trim().length > 0
+      : Boolean(wageStaffId) &&
+        wageLinesComplete(wageDeductions) &&
+        wageLinesComplete(wageAdditions) &&
+        wageNet > 0 &&
+        (isDayWage ? daysWorked > 0 && shownRate > 0 : parseMoneyInput(wageAmount) > 0);
   const wageDateLabel =
     wagePeriod === "day"
       ? "Date"
@@ -713,48 +1005,103 @@ export function PracticeProjectFilePage() {
       setError("Pick a staff member");
       return;
     }
-    if (!wageLinesComplete(wageAdditions)) {
-      setError("Each extra needs a description and an amount");
-      return;
-    }
-    if (!wageLinesComplete(wageDeductions)) {
-      setError("Each deduction needs a description and an amount");
-      return;
-    }
-    if (isDayWage) {
-      if (!(shownRate > 0)) {
-        setError("This staff member has no daily rate. Set it on their staff card first.");
-        return;
-      }
+    if (wageAbsent) {
       if (!(daysWorked > 0)) {
-        setError("Enter how many days were worked");
+        setError("Enter how many days they were absent");
         return;
       }
-    } else if (!(parseMoneyInput(wageAmount) > 0)) {
-      setError("Enter a wage amount greater than zero");
-      return;
+    } else if (wageOverride) {
+      if (!(parseMoneyInput(wageAmount) > 0)) {
+        setError("Enter the commission amount");
+        return;
+      }
+      if (!wageReason.trim()) {
+        setError("Enter a reason for this commission");
+        return;
+      }
+    } else {
+      if (!wageLinesComplete(wageAdditions)) {
+        setError("Each extra needs a description and an amount");
+        return;
+      }
+      if (!wageLinesComplete(wageDeductions)) {
+        setError("Each deduction needs a description and an amount");
+        return;
+      }
+      if (isDayWage) {
+        if (!(shownRate > 0)) {
+          setError("This staff member has no daily rate. Set it on their staff card first.");
+          return;
+        }
+        if (!(daysWorked > 0)) {
+          setError("Enter how many days were worked");
+          return;
+        }
+      } else if (!(parseMoneyInput(wageAmount) > 0)) {
+        setError("Enter a wage amount greater than zero");
+        return;
+      }
+      if (!(wageNet > 0)) {
+        setError("Net wage must be greater than zero after extras and deductions");
+        return;
+      }
     }
-    if (!(wageNet > 0)) {
-      setError("Net wage must be greater than zero after extras and deductions");
-      return;
+    let ledgerId: string | null = wageLedgerId || null;
+    if (!wageAbsent) {
+      ledgerId = await pickOrCreateExpenseLedger(wageLedgerId);
+      if (!ledgerId) {
+        setError("Pick or type a wages ledger");
+        return;
+      }
+    } else if (ledgerId && !ledgers.some((l) => String(l.id) === ledgerId)) {
+      ledgerId = await pickOrCreateExpenseLedger(ledgerId);
     }
     setSaving(true);
     try {
       setError(null);
-      const payload = {
-        staff_id: Number(wageStaffId),
-        occurred_on: wageDate || todayIso(),
-        notes: wageNote.trim() || null,
-        deductions: wageDeductions.map((row) => ({
-          description: row.description.trim(),
-          amount: parseMoneyInput(row.amount),
-        })),
-        additions: wageAdditions.map((row) => ({
-          description: row.description.trim(),
-          amount: parseMoneyInput(row.amount),
-        })),
-        ...(isDayWage ? { days: daysWorked } : { amount: parseMoneyInput(wageAmount) }),
-      };
+      const payload = wageAbsent
+        ? {
+            staff_id: Number(wageStaffId),
+            occurred_on: wageDate || todayIso(),
+            kind: "absence" as const,
+            override_reason: wageReason.trim() || null,
+            amount: 0,
+            days: daysWorked,
+            ledger_id: ledgerId ? Number(ledgerId) : null,
+            notes: wageNote.trim() || null,
+            deductions: [] as { description: string; amount: number }[],
+            additions: [] as { description: string; amount: number }[],
+          }
+        : wageOverride
+        ? {
+            staff_id: Number(wageStaffId),
+            occurred_on: wageDate || todayIso(),
+            kind: "commission" as const,
+            override_reason: wageReason.trim(),
+            amount: parseMoneyInput(wageAmount),
+            days: null,
+            ledger_id: Number(ledgerId),
+            notes: wageNote.trim() || null,
+            deductions: [] as { description: string; amount: number }[],
+            additions: [] as { description: string; amount: number }[],
+          }
+        : {
+            staff_id: Number(wageStaffId),
+            occurred_on: wageDate || todayIso(),
+            kind: "wage" as const,
+            override_reason: null,
+            ledger_id: Number(ledgerId),
+            notes: wageNote.trim() || null,
+            deductions: wageDeductions.map((row) => ({
+              description: row.description.trim(),
+              amount: parseMoneyInput(row.amount),
+            })),
+            additions: wageAdditions.map((row) => ({
+              description: row.description.trim(),
+              amount: parseMoneyInput(row.amount),
+            })),
+            ...(isDayWage ? { days: daysWorked } : { amount: parseMoneyInput(wageAmount) }),
+          };
       if (editingEntry) {
         if (!editingEntry.wage_id) {
           setError("This wage line cannot be edited");
@@ -775,6 +1122,10 @@ export function PracticeProjectFilePage() {
       setWageDeductions([]);
       setWageAdditions([]);
       setWageNote("");
+      setWageOverride(false);
+      setWageAbsent(false);
+      setWageReason("");
+      setWageLedgerId(defaultWageLedgerId());
       setWageDate(todayIso());
       closeAdd();
       await load();
@@ -807,6 +1158,75 @@ export function PracticeProjectFilePage() {
     }
   }
 
+  async function addTravel() {
+    if (!project) return;
+    if (!travelStaffId) {
+      setError("Pick who travelled");
+      return;
+    }
+    const ledgerId = await pickOrCreateExpenseLedger(travelLedgerId);
+    if (!ledgerId) {
+      setError("Pick a travel / fuel ledger");
+      return;
+    }
+    const km = parseMoneyInput(travelKm);
+    const price = parseMoneyInput(travelPrice);
+    const amount = parseMoneyInput(travelAmount);
+    if (km < 0 || price < 0 || amount < 0) {
+      setError("Mileage, price per litre and amount cannot be negative");
+      return;
+    }
+    setSaving(true);
+    try {
+      setError(null);
+      const payload = {
+        project_id: project.id,
+        staff_id: Number(travelStaffId),
+        ledger_id: Number(ledgerId),
+        km,
+        price_per_litre: price,
+        amount,
+        occurred_on: travelDate || todayIso(),
+        notes: travelNote.trim() || null,
+      };
+      if (editingEntry?.travel_id) {
+        await practiceApi.travels.update(editingEntry.travel_id, payload);
+      } else {
+        await practiceApi.travels.create(payload);
+      }
+      setTravelStaffId("");
+      setTravelKm("");
+      setTravelPrice("");
+      setTravelAmount("");
+      setTravelNote("");
+      closeAdd();
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not save traveling");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  submitTrailRef.current = () => {
+    if (saving) return;
+    if (addType === "expense" && addingExpenseVendor) {
+      void saveNewExpenseVendor();
+      return;
+    }
+    if (addType === "expense" && addingExpenseLedger) {
+      void saveNewExpenseLedger();
+      return;
+    }
+    if (addType === "note") void addNote();
+    else if (addType === "expense") void addExpense();
+    else if (addType === "wage") void addWage();
+    else if (addType === "travel") void addTravel();
+    else if (addType === "meeting") void addMeeting();
+    else if (addType === "payment") void addPayment();
+    else if (addType === "quote" || addType === "invoice" || addType === "rfq") startNewDocument(addType);
+  };
+
   if (!validId) {
     return (
       <div className="space-y-4">
@@ -821,6 +1241,12 @@ export function PracticeProjectFilePage() {
   if (!project) {
     return <p className="text-sm text-muted-foreground">{error || "Opening project file…"}</p>;
   }
+
+  const payReceived = parseMoneyInput(payAmount);
+  const payAllocated = roundCents(
+    payInvoiceIds.reduce((sum, invoiceId) => sum + invoicePayAmount(invoiceId), 0)
+  );
+  const payRemaining = roundCents(payReceived - payAllocated);
 
   return (
     <div className="space-y-6">
@@ -996,6 +1422,96 @@ export function PracticeProjectFilePage() {
               }}
             />
           </div>
+          <div className="sm:col-span-2 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label>Still to do</Label>
+              {(() => {
+                const items = project.checklist || [];
+                const open = items.filter((i) => !i.done).length;
+                return (
+                  <span className="text-[11px] text-muted-foreground">
+                    {items.length === 0
+                      ? "Tick off leftover work so nothing is missed"
+                      : `${open} open · ${items.length} total`}
+                  </span>
+                );
+              })()}
+            </div>
+            <ul className="space-y-1">
+              {(project.checklist || []).map((item) => (
+                <li key={item.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-[hsl(var(--neon-lime))]"
+                    checked={item.done}
+                    onChange={() => {
+                      const next = (project.checklist || []).map((row) =>
+                        row.id === item.id ? { ...row, done: !row.done } : row
+                      );
+                      void saveInfo({ checklist: next });
+                    }}
+                    aria-label={item.text}
+                  />
+                  <span
+                    className={
+                      item.done
+                        ? "min-w-0 flex-1 text-sm text-muted-foreground line-through"
+                        : "min-w-0 flex-1 text-sm"
+                    }
+                  >
+                    {item.text}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    aria-label={`Remove ${item.text}`}
+                    onClick={() => {
+                      const next = (project.checklist || []).filter((row) => row.id !== item.id);
+                      void saveInfo({ checklist: next });
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <Input
+                value={todoDraft}
+                onChange={(e) => setTodoDraft(e.target.value)}
+                placeholder="Add a leftover: return keys, snag list, collect remaining paint…"
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  const text = todoDraft.trim();
+                  if (!text) return;
+                  const next = [
+                    ...(project.checklist || []),
+                    { id: `t-${Date.now()}`, text, done: false },
+                  ];
+                  setTodoDraft("");
+                  void saveInfo({ checklist: next });
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!todoDraft.trim()}
+                onClick={() => {
+                  const text = todoDraft.trim();
+                  if (!text) return;
+                  const next = [
+                    ...(project.checklist || []),
+                    { id: `t-${Date.now()}`, text, done: false },
+                  ];
+                  setTodoDraft("");
+                  void saveInfo({ checklist: next });
+                }}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
           {saving && <p className="sm:col-span-2 text-xs text-muted-foreground">Saving…</p>}
         </CardContent>
       </Card>
@@ -1040,12 +1556,25 @@ export function PracticeProjectFilePage() {
                   <CardContent className="space-y-1.5 py-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline">{ENTRY_LABEL[entry.entry_type]}</Badge>
+                        <Badge variant="outline" className={ENTRY_TILE[entry.entry_type]}>
+                          {entry.entry_type === "wage"
+                            ? projectWages.find((w) => w.id === entry.wage_id)?.kind === "commission"
+                              ? "Commission"
+                              : projectWages.find((w) => w.id === entry.wage_id)?.kind === "absence"
+                                ? "Absent"
+                                : ENTRY_LABEL[entry.entry_type]
+                            : ENTRY_LABEL[entry.entry_type]}
+                        </Badge>
                         {entry.entry_type === "invoice" &&
                           projectInvoices.find((d) => d.id === entry.document_id)?.status === "paid" && (
                             <Badge variant="danger">{documentStatusLabel("paid")}</Badge>
                           )}
                         <span className="text-sm font-medium">{entry.title}</span>
+                        {trailLedgerName(entry) ? (
+                          <span className="rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {trailLedgerName(entry)}
+                          </span>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-3">
                         {entry.amount != null && (
@@ -1115,10 +1644,11 @@ export function PracticeProjectFilePage() {
           </ol>
         )}
         <div className="flex justify-center pt-1">
-          <Button type="button" variant="outline" onClick={() => openAdd("note")}>
+          <Button type="button" variant="outline" onClick={() => openAdd(addType)}>
             <Plus className="mr-1 h-4 w-4" />
             Add to trail
           </Button>
+          <p className="text-center text-[11px] text-muted-foreground">Ctrl+Enter opens Add and saves</p>
         </div>
       </section>
 
@@ -1128,8 +1658,8 @@ export function PracticeProjectFilePage() {
         title={editingEntry ? "Correct this trail line" : "Add to this file"}
         description={
           editingEntry
-            ? "Correct what was recorded, or remove it from the trail and add it again. Quotes and invoices still open in their own editor."
-            : "Notes, meeting, quote, invoice, RFQ, expense, or a received payment. Date each one to when it happened."
+            ? "Correct what was recorded, or remove it from the trail and add it again. Ctrl+Enter saves."
+            : "Notes, meeting, quote, invoice, RFQ, expense, or a received payment. Ctrl+Enter saves."
         }
       >
         <div className="space-y-4">
@@ -1142,6 +1672,7 @@ export function PracticeProjectFilePage() {
                   key={opt.type}
                   type="button"
                   size="sm"
+                  tabIndex={-1}
                   variant={addType === opt.type ? "default" : "outline"}
                   onClick={() => openAdd(opt.type)}
                 >
@@ -1164,7 +1695,12 @@ export function PracticeProjectFilePage() {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>Date</Label>
-                <Input type="date" value={noteDate} onChange={(e) => setNoteDate(e.target.value)} />
+                <Input
+                  ref={trailDateRef}
+                  type="date"
+                  value={noteDate}
+                  onChange={(e) => setNoteDate(e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Title</Label>
@@ -1193,7 +1729,12 @@ export function PracticeProjectFilePage() {
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label>Date incurred</Label>
-                <Input type="date" value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
+                <Input
+                  ref={trailDateRef}
+                  type="date"
+                  value={expenseDate}
+                  onChange={(e) => setExpenseDate(e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>What was spent</Label>
@@ -1205,24 +1746,74 @@ export function PracticeProjectFilePage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Vendor</Label>
-                <ClientPicker
-                  kind="supplier"
-                  value={expenseSupplierId}
-                  selectedName={expenseSupplierName || null}
-                  selectedTradingName={expenseSupplierTrading}
-                  onSelect={(party) => {
-                    setExpenseSupplierId(party.id);
-                    setExpenseSupplierName(party.name);
-                    setExpenseSupplierTrading(party.trading_name);
-                  }}
-                  onClear={() => {
-                    setExpenseSupplierId(null);
-                    setExpenseSupplierName("");
-                    setExpenseSupplierTrading(null);
-                  }}
-                />
+                <div className="flex flex-wrap items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <ClientPicker
+                      key={vendorPickerKey}
+                      kind="supplier"
+                      value={expenseSupplierId}
+                      selectedName={expenseSupplierName || null}
+                      selectedTradingName={expenseSupplierTrading}
+                      onSelect={(party) => {
+                        setExpenseSupplierId(party.id);
+                        setExpenseSupplierName(party.name);
+                        setExpenseSupplierTrading(party.trading_name);
+                      }}
+                      onClear={() => {
+                        setExpenseSupplierId(null);
+                        setExpenseSupplierName("");
+                        setExpenseSupplierTrading(null);
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setAddingExpenseVendor(true);
+                      setNewExpenseVendorName("");
+                    }}
+                  >
+                    Add vendor
+                  </Button>
+                </div>
+                {addingExpenseVendor && (
+                  <div className="flex flex-wrap items-end gap-2 pt-1">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Label>New vendor name</Label>
+                      <Input
+                        value={newExpenseVendorName}
+                        onChange={(e) => setNewExpenseVendorName(e.target.value)}
+                        placeholder="Florist wholesale, hardware store…"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          void saveNewExpenseVendor();
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={!newExpenseVendorName.trim() || saving}
+                      onClick={() => void saveNewExpenseVendor()}
+                    >
+                      Save vendor
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setAddingExpenseVendor(false);
+                        setNewExpenseVendorName("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
                 <p className="text-[11px] text-muted-foreground">
-                  Linked to the Suppliers library, so spend rolls onto that supplier&apos;s statement.
+                  Typing filters the list. Use Add vendor if they are not in the Suppliers library yet.
                 </p>
               </div>
               <div className="space-y-1.5">
@@ -1237,18 +1828,66 @@ export function PracticeProjectFilePage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Expense ledger</Label>
-                <TypeaheadSelect
-                  options={expenseLedgers.map((l) => ({ id: String(l.id), label: l.name }))}
-                  value={expenseLedgerId}
-                  onChange={setExpenseLedgerId}
-                  placeholder="Type a ledger…"
-                  emptyMessage="No ledgers match"
-                  aria-label="Expense ledger"
-                />
+                <div className="flex flex-wrap items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <TypeaheadSelect
+                      options={expenseLedgers.map((l) => ({ id: String(l.id), label: l.name }))}
+                      value={expenseLedgerId}
+                      onChange={setExpenseLedgerId}
+                      placeholder="Type a ledger…"
+                      emptyMessage="No ledgers match"
+                      aria-label="Expense ledger"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setAddingExpenseLedger(true);
+                      setNewExpenseLedgerName("");
+                    }}
+                  >
+                    Add ledger
+                  </Button>
+                </div>
+                {addingExpenseLedger && (
+                  <div className="flex flex-wrap items-end gap-2 pt-1">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Label>New ledger name</Label>
+                      <Input
+                        value={newExpenseLedgerName}
+                        onChange={(e) => setNewExpenseLedgerName(e.target.value)}
+                        placeholder="Fuel, Hire, Consumables…"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.preventDefault();
+                          void saveNewExpenseLedger();
+                        }}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={!newExpenseLedgerName.trim() || saving}
+                      onClick={() => void saveNewExpenseLedger()}
+                    >
+                      Save ledger
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setAddingExpenseLedger(false);
+                        setNewExpenseLedgerName("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
-                This uses your core ledger accounts so project running costs roll toward the same
-                books as statement categorisation.
+                Work Flow ledgers. Use Add ledger if the account is not in the list yet.
               </p>
               <Button
                 type="button"
@@ -1262,6 +1901,15 @@ export function PracticeProjectFilePage() {
 
           {addType === "wage" && (
             <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>{wageAbsent ? "First day absent" : wageOverride ? "Date" : wageDateLabel}</Label>
+                <Input
+                  ref={trailDateRef}
+                  type="date"
+                  value={wageDate}
+                  onChange={(e) => setWageDate(e.target.value)}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label>Staff member</Label>
                 <TypeaheadSelect
@@ -1287,6 +1935,9 @@ export function PracticeProjectFilePage() {
                     const rate = parseWageNumber(s.wage_amount);
                     setWageRatePeriod(period);
                     setWageRateAmount(rate);
+                    setWageLedgerId(
+                      s.default_ledger_id ? String(s.default_ledger_id) : defaultWageLedgerId()
+                    );
                     if (period === "day") {
                       setWageAmount("");
                       return;
@@ -1301,10 +1952,126 @@ export function PracticeProjectFilePage() {
               {wageStaffId && (
                 <>
                   <div className="space-y-1.5">
-                    <Label>{wageDateLabel}</Label>
-                    <Input type="date" value={wageDate} onChange={(e) => setWageDate(e.target.value)} />
+                    <Label>Wages ledger</Label>
+                    <TypeaheadSelect
+                      options={expenseLedgers.map((l) => ({ id: String(l.id), label: l.name }))}
+                      value={wageLedgerId}
+                      onChange={setWageLedgerId}
+                      placeholder="Type Wages and salaries, or a new name…"
+                      emptyMessage="No ledgers match — type a name to create one"
+                      allowCustom
+                      customHint="Create ledger"
+                      aria-label="Wages ledger"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Defaults from this staff member&apos;s profile. Pick another ledger if this
+                      payment should go elsewhere.
+                    </p>
                   </div>
-                  {isDayWage ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={wageOverride ? "default" : "outline"}
+                      onClick={() => {
+                        setWageOverride((on) => {
+                          const next = !on;
+                          if (next) {
+                            setWageAbsent(false);
+                            setWageDays("");
+                            setWageDeductions([]);
+                            setWageAdditions([]);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      {wageOverride ? "Using commission override" : "Override with commission"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={wageAbsent ? "default" : "outline"}
+                      onClick={() => {
+                        setWageAbsent((on) => {
+                          const next = !on;
+                          if (next) {
+                            setWageOverride(false);
+                            setWageAmount("0");
+                            if (!wageDays) setWageDays("1");
+                            setWageDeductions([]);
+                            setWageAdditions([]);
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      {wageAbsent ? "Marked absent" : "Absent"}
+                    </Button>
+                  </div>
+                  {wageAbsent ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label>Days absent</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={wageDays}
+                          onChange={(e) => setWageDays(e.target.value)}
+                          placeholder="e.g. 3"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          From the date above
+                          {daysWorked > 0 && wageDate
+                            ? daysWorked === 1
+                              ? " · that day only"
+                              : ` · through ${addCalendarDays(wageDate, daysWorked - 1)}`
+                            : ""}
+                          . Decimals are fine — 0.5 is a half day.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Reason (optional)</Label>
+                        <Input
+                          value={wageReason}
+                          onChange={(e) => setWageReason(e.target.value)}
+                          placeholder="Sick, annual leave, family responsibility…"
+                        />
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Records R0 on this file and on the staff profile so those days are not missing.
+                      </p>
+                    </div>
+                  ) : wageOverride ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label>Commission amount</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={wageAmount}
+                          onChange={(e) => setWageAmount(e.target.value)}
+                          placeholder="0.00"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Replaces the daily wage on this payment — for a director profit split or similar.
+                          It still lands on this person&apos;s wages statement.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Reason for this payment</Label>
+                        <textarea
+                          value={wageReason}
+                          onChange={(e) => setWageReason(e.target.value)}
+                          rows={3}
+                          className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          placeholder="Profit split on this job, director commission…"
+                        />
+                      </div>
+                    </>
+                  ) : isDayWage ? (
                     <>
                       <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
                         <p className="text-[11px] text-muted-foreground">
@@ -1351,6 +2118,8 @@ export function PracticeProjectFilePage() {
                       />
                     </div>
                   )}
+                  {!wageOverride && !wageAbsent && (
+                    <>
                   <WageLineList
                     label="Additional income"
                     addLabel="Add extra"
@@ -1367,7 +2136,13 @@ export function PracticeProjectFilePage() {
                     rows={wageDeductions}
                     onChange={setWageDeductions}
                   />
-                  {(wageGross > 0 || additionTotal > 0) && (
+                    </>
+                  )}
+                  {wageAbsent ? (
+                    <p className="text-sm tabular-nums text-muted-foreground">
+                      Absence · {formatWageDays(daysWorked) || "0"} days · {formatMoney(0)}
+                    </p>
+                  ) : wageGross > 0 || additionTotal > 0 ? (
                     <p
                       className={
                         wageNet > 0
@@ -1375,14 +2150,17 @@ export function PracticeProjectFilePage() {
                           : "text-sm tabular-nums text-destructive"
                       }
                     >
-                      {isDayWage
-                        ? `${formatWageDays(daysWorked) || "0"} days × ${formatMoney(shownRate)} per day = ${formatMoney(wageGross)}`
-                        : `Gross ${formatMoney(wageGross)}`}
-                      {additionTotal > 0 ? ` + extras ${formatMoney(additionTotal)}` : ""}
-                      {deductionTotal > 0 ? ` − deductions ${formatMoney(deductionTotal)}` : ""}
-                      {` · net ${formatMoney(wageNet)}`}
+                      {wageOverride
+                        ? `Commission ${formatMoney(wageGross)}`
+                        : isDayWage
+                          ? `${formatWageDays(daysWorked) || "0"} days × ${formatMoney(shownRate)} per day = ${formatMoney(wageGross)}`
+                          : `Gross ${formatMoney(wageGross)}`}
+                      {!wageOverride && additionTotal > 0 ? ` + extras ${formatMoney(additionTotal)}` : ""}
+                      {!wageOverride && deductionTotal > 0 ? ` − deductions ${formatMoney(deductionTotal)}` : ""}
+                      {!wageOverride ? ` · net ${formatMoney(wageNet)}` : ""}
                     </p>
-                  )}
+                  ) : null}
+                  {!wageOverride && !wageAbsent && (
                   <div className="space-y-1.5">
                     <Label>Notes (saved for HR)</Label>
                     <textarea
@@ -1393,12 +2171,23 @@ export function PracticeProjectFilePage() {
                       placeholder="How they worked this period — used in HR later."
                     />
                   </div>
+                  )}
                   <Button
                     type="button"
                     onClick={() => void addWage()}
                     disabled={saving || !wageCanSave}
                   >
-                    {editingEntry ? "Save wages" : "Add wages"}
+                    {editingEntry
+                      ? wageAbsent
+                        ? "Save absence"
+                        : wageOverride
+                          ? "Save commission"
+                          : "Save wages"
+                      : wageAbsent
+                        ? "Add absence"
+                        : wageOverride
+                          ? "Add commission"
+                          : "Add wages"}
                   </Button>
                 </>
               )}
@@ -1417,14 +2206,40 @@ export function PracticeProjectFilePage() {
                 New {addType === "rfq" ? "RFQ" : addType}
               </Button>
               <div className="space-y-1.5">
-                <Label>Or link an existing {addType === "rfq" ? "RFQ" : addType}</Label>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <Label>Or link an existing {addType === "rfq" ? "RFQ" : addType}</Label>
+                  {addType !== "rfq" && (
+                    <label
+                      className={cn(
+                        "flex items-center gap-1.5 text-sm",
+                        project.client_id ? "cursor-pointer" : "cursor-not-allowed text-muted-foreground"
+                      )}
+                      title={
+                        project.client_id
+                          ? "Show only this client's documents"
+                          : "Attach a client on the info sheet first"
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-[hsl(var(--neon-magenta))]"
+                        checked={linkClientOnly}
+                        disabled={!project.client_id}
+                        onChange={(e) => setLinkClientOnly(e.target.checked)}
+                      />
+                      Filter by Client
+                    </label>
+                  )}
+                </div>
                 <Input
                   value={linkQuery}
                   onChange={(e) => setLinkQuery(e.target.value)}
                   placeholder={
                     addType === "rfq"
                       ? "Search number, reference, supplier…"
-                      : "Search number, reference, client…"
+                      : linkClientOnly
+                        ? "Search number or reference…"
+                        : "Search number, reference, client…"
                   }
                 />
               </div>
@@ -1432,13 +2247,7 @@ export function PracticeProjectFilePage() {
                 {linkBusy && <li className="text-xs text-muted-foreground">Loading…</li>}
                 {!linkBusy &&
                   linkDocs
-                    .filter((d) => {
-                      const q = linkQuery.trim().toLowerCase();
-                      if (!q) return true;
-                      return [d.number, d.title, d.party_name]
-                        .filter(Boolean)
-                        .some((v) => String(v).toLowerCase().includes(q));
-                    })
+                    .filter(matchesLinkDoc)
                     .map((d) => (
                       <li key={d.id}>
                         <button
@@ -1466,12 +2275,104 @@ export function PracticeProjectFilePage() {
                         </button>
                       </li>
                     ))}
-                {!linkBusy && linkDocs.length === 0 && (
-                  <li className="text-xs text-muted-foreground">
-                    No spare {addType === "rfq" ? "RFQs" : `${addType}s`} to link. Create a new one.
-                  </li>
-                )}
+                {!linkBusy && linkDocs.filter(matchesLinkDoc).length === 0 && (
+                    <li className="text-xs text-muted-foreground">
+                      {linkClientOnly && addType !== "rfq" && project.client_id
+                        ? `No spare ${addType}s for this client. Create a new one, or show all.`
+                        : `No spare ${addType === "rfq" ? "RFQs" : `${addType}s`} to link. Create a new one.`}
+                    </li>
+                  )}
               </ul>
+            </div>
+          )}
+
+          {addType === "travel" && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label>Date</Label>
+                <Input
+                  ref={trailDateRef}
+                  type="date"
+                  value={travelDate}
+                  onChange={(e) => setTravelDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Who travelled</Label>
+                <TypeaheadSelect
+                  options={staffList.map((s) => ({
+                    id: String(s.id),
+                    label: s.name,
+                    hint: s.job_title || undefined,
+                  }))}
+                  value={travelStaffId}
+                  onChange={setTravelStaffId}
+                  placeholder="Type a staff name…"
+                  emptyMessage="No staff match"
+                  aria-label="Who travelled"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Ledger</Label>
+                <TypeaheadSelect
+                  options={expenseLedgers.map((l) => ({ id: String(l.id), label: l.name }))}
+                  value={travelLedgerId}
+                  onChange={setTravelLedgerId}
+                  placeholder="Fuel, Travel…"
+                  emptyMessage="No ledgers match"
+                  aria-label="Travel ledger"
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label>Mileage (km)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={travelKm}
+                    onChange={(e) => setTravelKm(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Price per litre</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={travelPrice}
+                    onChange={(e) => setTravelPrice(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Amount paid</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={travelAmount}
+                    onChange={(e) => setTravelAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Note</Label>
+                <Input
+                  value={travelNote}
+                  onChange={(e) => setTravelNote(e.target.value)}
+                  placeholder="Trip, vehicle…"
+                />
+              </div>
+              <Button
+                type="button"
+                onClick={() => void addTravel()}
+                disabled={saving || !travelStaffId || !travelLedgerId}
+              >
+                {editingEntry ? "Save traveling" : "Add traveling"}
+              </Button>
             </div>
           )}
 
@@ -1480,7 +2381,12 @@ export function PracticeProjectFilePage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Date</Label>
-                  <Input type="date" value={meetDate} onChange={(e) => setMeetDate(e.target.value)} />
+                  <Input
+                    ref={trailDateRef}
+                    type="date"
+                    value={meetDate}
+                    onChange={(e) => setMeetDate(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Time</Label>
@@ -1518,6 +2424,15 @@ export function PracticeProjectFilePage() {
           {addType === "payment" && (
             <div className="space-y-3">
               <div className="space-y-1.5">
+                <Label>Date received</Label>
+                <Input
+                  ref={trailDateRef}
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
                 <Label>Amount received</Label>
                 <Input
                   type="number"
@@ -1528,9 +2443,20 @@ export function PracticeProjectFilePage() {
                   placeholder="0.00"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label>Date received</Label>
-                <Input type="date" value={payDate} onChange={(e) => setPayDate(e.target.value)} />
+              <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-[hsl(var(--neon-lime)/0.35)] bg-[hsl(var(--neon-lime)/0.08)] px-3 py-2">
+                <span className="text-sm font-medium">Remaining to allocate</span>
+                <span
+                  className={cn(
+                    "text-lg font-bold tabular-nums",
+                    payRemaining === 0 && payReceived > 0
+                      ? "text-[hsl(var(--neon-lime))]"
+                      : payRemaining < 0
+                        ? "text-destructive"
+                        : "text-foreground"
+                  )}
+                >
+                  {formatMoney(payRemaining)}
+                </span>
               </div>
               <div className="space-y-1.5">
                 <Label>Method</Label>
@@ -1542,28 +2468,87 @@ export function PracticeProjectFilePage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Against invoice (optional)</Label>
-                <Select
-                  value={payInvoiceId}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setPayInvoiceId(next);
-                    const inv = projectInvoices.find((d) => String(d.id) === next);
-                    if (inv && !payAmount) setPayAmount(String(inv.amount));
-                  }}
-                >
-                  <option value="">Not tied to an invoice</option>
-                  {projectInvoices.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.number}
-                      {inv.title ? ` · ${inv.title}` : ""} · {formatMoney(inv.amount)}
-                      {inv.status === "paid" ? " · Paid" : ""}
-                    </option>
-                  ))}
-                </Select>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>Allocate to invoices</Label>
+                  {projectInvoices.some((d) => d.status !== "paid" && d.status !== "void") && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+                      onClick={selectUnpaidInvoices}
+                    >
+                      Select unpaid
+                    </button>
+                  )}
+                </div>
+                <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-input p-2">
+                  {projectInvoices.length === 0 ? (
+                    <li className="text-xs text-muted-foreground">No invoices on this file yet.</li>
+                  ) : (
+                    projectInvoices.map((inv) => {
+                      const selected = payInvoiceIds.includes(inv.id);
+                      const amt = Number(inv.amount) || 0;
+                      const fits = selected || amt <= payRemaining + 0.005;
+                      return (
+                      <li key={inv.id}>
+                        <label
+                          className={cn(
+                            "flex items-center gap-2 rounded-sm px-1 py-1 text-sm",
+                            fits ? "cursor-pointer hover:bg-accent/60" : "cursor-not-allowed opacity-50"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-[hsl(var(--neon-lime))]"
+                            checked={selected}
+                            disabled={!fits}
+                            onChange={(e) => togglePayInvoice(inv.id, e.target.checked)}
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {inv.number}
+                            {inv.title ? ` · ${inv.title}` : ""}
+                            {inv.status === "paid" ? " · Paid" : ""}
+                            {selected ? " · will be Paid" : ""}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-xs font-semibold">
+                            {formatMoney(inv.amount)}
+                          </span>
+                        </label>
+                      </li>
+                      );
+                    })
+                  )}
+                </ul>
                 <p className="text-[11px] text-muted-foreground">
-                  Tie the payment to an invoice to mark it Paid — the invoice and its PDF printout get a
-                  red Paid — Thank you stamp.
+                  {payReceived <= 0
+                    ? "Enter the amount received, then tick invoices. Each allocated invoice is marked Paid."
+                    : payRemaining === 0 && payInvoiceIds.length > 0
+                      ? "Fully allocated — ticked invoices will be marked Paid."
+                      : payRemaining > 0
+                        ? `Tick an invoice that fits the remaining ${formatMoney(payRemaining)}.`
+                        : "Allocated more than received. Untick an invoice."}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Allocate to ledger (optional)</Label>
+                <TypeaheadSelect
+                  options={ledgers
+                    .filter((l) => !l.is_archived)
+                    .map((l) => ({
+                      id: String(l.id),
+                      label: l.name,
+                      hint: l.type === "expense" ? "Expense · credits this account" : "Income",
+                    }))}
+                  value={payLedgerId}
+                  onChange={setPayLedgerId}
+                  placeholder="Type a ledger…"
+                  emptyMessage="No Work Flow ledgers match"
+                  allowEmpty
+                  emptyLabel="No ledger"
+                  aria-label="Payment ledger"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  For refunds (e.g. a director paying back a cash advance), pick the expense ledger.
+                  That credits the account — it does not add as spend.
                 </p>
               </div>
               <div className="space-y-1.5">

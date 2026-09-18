@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,8 +14,13 @@ from app.database import get_db
 from app.deps import get_active_profile, get_active_profile_id
 from app.models import UserProfile
 from app.modules.practice.manifest import MANIFEST
-from app.modules.practice.commerce import router as commerce_router, sync_invoice_payment_status
+from app.modules.practice.commerce import (
+    payment_invoice_ids,
+    router as commerce_router,
+    sync_payment_invoices,
+)
 from app.modules.practice.staff import router as staff_router
+from app.modules.practice.ledgers import get_practice_ledger, router as ledgers_router
 from app.modules.practice.products import router as products_router
 from app.modules.practice.templates import router as templates_router
 from app.modules.practice.flags import get_or_create_settings, require_feature
@@ -56,6 +62,7 @@ router.include_router(templates_router)
 router.include_router(commerce_router)
 router.include_router(staff_router)
 router.include_router(products_router)
+router.include_router(ledgers_router)
 
 _PARTY_KINDS = {k.value for k in PartyKind}
 _PROJECT_STATUSES = {s.value for s in ProjectStatus}
@@ -72,6 +79,27 @@ def _party_out(row: PracticeParty) -> PartyOut:
     return PartyOut.model_validate(row)
 
 
+def _clean_checklist(raw) -> list[dict]:
+    if not raw:
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if isinstance(item, dict):
+            text = str(item.get("text") or "").strip()
+            done = bool(item.get("done"))
+            cid = str(item.get("id") or "").strip()
+        else:
+            text = str(getattr(item, "text", "") or "").strip()
+            done = bool(getattr(item, "done", False))
+            cid = str(getattr(item, "id", "") or "").strip()
+        if not text:
+            continue
+        out.append({"id": cid or uuid.uuid4().hex[:12], "text": text[:240], "done": done})
+        if len(out) >= 80:
+            break
+    return out
+
+
 def _project_out(row: PracticeProject, entry_count: int = 0) -> ProjectOut:
     return ProjectOut(
         id=row.id,
@@ -83,6 +111,7 @@ def _project_out(row: PracticeProject, entry_count: int = 0) -> ProjectOut:
         started_on=row.started_on,
         due_on=row.due_on,
         summary=row.summary,
+        checklist=_clean_checklist(getattr(row, "checklist_json", None)),
         is_archived=row.is_archived,
         entry_count=entry_count,
         created_at=row.created_at,
@@ -141,11 +170,15 @@ def _add_entry(
     body: str | None = None,
     amount=None,
     document_id: int | None = None,
+    document_ids: list[int] | None = None,
+    ledger_id: int | None = None,
     occurred_on: date | None = None,
     occurred_time: str | None = None,
     *,
     stamp_date: bool = True,
 ) -> PracticeEntry:
+    ids = document_ids or ([document_id] if document_id is not None else None)
+    first = ids[0] if ids else document_id
     row = PracticeEntry(
         user_profile_id=profile_id,
         project_id=project_id,
@@ -153,7 +186,9 @@ def _add_entry(
         title=title,
         body=body,
         amount=amount,
-        document_id=document_id,
+        document_id=first,
+        document_ids=ids,
+        ledger_id=ledger_id,
         occurred_on=(
             occurred_on
             if occurred_on is not None
@@ -164,6 +199,35 @@ def _add_entry(
     )
     db.add(row)
     return row
+
+
+def _invoices_on_project(
+    db: Session, profile_id: int, project_id: int, ids: list[int]
+) -> list[PracticeDocument]:
+    if not ids:
+        return []
+    uniq: list[int] = []
+    seen: set[int] = set()
+    for invoice_id in ids:
+        if invoice_id in seen:
+            continue
+        seen.add(invoice_id)
+        uniq.append(invoice_id)
+    rows = (
+        db.query(PracticeDocument)
+        .filter(
+            PracticeDocument.id.in_(uniq),
+            PracticeDocument.user_profile_id == profile_id,
+            PracticeDocument.project_id == project_id,
+            PracticeDocument.kind == DocumentKind.INVOICE.value,
+        )
+        .all()
+    )
+    by_id = {row.id: row for row in rows}
+    missing = [invoice_id for invoice_id in uniq if invoice_id not in by_id]
+    if missing:
+        raise HTTPException(404, "Invoice not found on this project file")
+    return [by_id[invoice_id] for invoice_id in uniq]
 
 
 def _entry_count(db: Session, profile_id: int, project_id: int) -> int:
@@ -413,6 +477,7 @@ def create_project(
         started_on=body.started_on,
         due_on=body.due_on,
         summary=body.summary,
+        checklist_json=_clean_checklist(body.checklist),
     )
     db.add(row)
     db.flush()
@@ -478,6 +543,8 @@ def update_project(
         data["name"] = data["name"].strip()
     if "reference" in data and data["reference"] is not None:
         data["reference"] = data["reference"].strip() or None
+    if "checklist" in data:
+        data["checklist_json"] = _clean_checklist(data.pop("checklist"))
 
     old_status = row.status
     for key, value in data.items():
@@ -511,25 +578,21 @@ def add_entry(
         )
     amount = body.amount
     document_id = body.document_id
+    document_ids = list(body.document_ids or [])
     if entry_type == EntryType.MEETING.value:
         if not body.title.strip():
             raise HTTPException(400, "A meeting needs a title")
     if entry_type == EntryType.PAYMENT.value:
         if amount is None:
             raise HTTPException(400, "A received payment needs an amount")
-        if document_id is not None:
-            inv = (
-                db.query(PracticeDocument)
-                .filter(
-                    PracticeDocument.id == document_id,
-                    PracticeDocument.user_profile_id == profile_id,
-                    PracticeDocument.project_id == project_id,
-                    PracticeDocument.kind == DocumentKind.INVOICE.value,
-                )
-                .first()
-            )
-            if not inv:
-                raise HTTPException(404, "Invoice not found on this project file")
+        if document_id is not None and document_id not in document_ids:
+            document_ids.insert(0, document_id)
+        invoices = _invoices_on_project(db, profile_id, project_id, document_ids)
+        document_ids = [row.id for row in invoices]
+        document_id = document_ids[0] if document_ids else None
+        if body.ledger_id is not None:
+            get_practice_ledger(db, profile_id, body.ledger_id)
+    ledger_id = body.ledger_id if entry_type == EntryType.PAYMENT.value else None
     row = _add_entry(
         db,
         profile_id,
@@ -539,12 +602,14 @@ def add_entry(
         body.body,
         amount=amount,
         document_id=document_id,
+        document_ids=document_ids or None,
+        ledger_id=ledger_id,
         occurred_on=body.occurred_on,
         occurred_time=_clean_time(body.occurred_time),
     )
     db.flush()
     if entry_type == EntryType.PAYMENT.value:
-        sync_invoice_payment_status(db, profile_id, document_id)
+        sync_payment_invoices(db, profile_id, document_ids)
     # Touch project so it sorts to the top of the library
     project = _get_project(db, profile_id, project_id)
     project.updated_at = datetime.utcnow()
@@ -587,27 +652,23 @@ def update_entry(
         data["occurred_time"] = _clean_time(data["occurred_time"])
     if row.entry_type == EntryType.PAYMENT.value and "amount" in data and data["amount"] is None:
         raise HTTPException(400, "A received payment needs an amount")
-    if "document_id" in data and data["document_id"] is not None:
-        inv = (
-            db.query(PracticeDocument)
-            .filter(
-                PracticeDocument.id == data["document_id"],
-                PracticeDocument.user_profile_id == profile_id,
-                PracticeDocument.project_id == project_id,
-                PracticeDocument.kind == DocumentKind.INVOICE.value,
-            )
-            .first()
-        )
-        if not inv:
-            raise HTTPException(404, "Invoice not found on this project file")
-    old_document_id = row.document_id
+    if row.entry_type == EntryType.PAYMENT.value and "ledger_id" in data and data["ledger_id"] is not None:
+        get_practice_ledger(db, profile_id, data["ledger_id"])
+    old_invoice_ids = payment_invoice_ids(row)
+    if "document_ids" in data or "document_id" in data:
+        ids = list(data.get("document_ids") or [])
+        single = data.get("document_id", row.document_id)
+        if single is not None and single not in ids:
+            ids.insert(0, single)
+        invoices = _invoices_on_project(db, profile_id, project_id, ids)
+        ids = [inv.id for inv in invoices]
+        data["document_ids"] = ids or None
+        data["document_id"] = ids[0] if ids else None
     for key, value in data.items():
         setattr(row, key, value)
     if row.entry_type == EntryType.PAYMENT.value:
         db.flush()
-        sync_invoice_payment_status(db, profile_id, old_document_id)
-        if row.document_id != old_document_id:
-            sync_invoice_payment_status(db, profile_id, row.document_id)
+        sync_payment_invoices(db, profile_id, old_invoice_ids + payment_invoice_ids(row))
     project = _get_project(db, profile_id, project_id)
     project.updated_at = datetime.utcnow()
     db.commit()
@@ -644,11 +705,12 @@ def delete_entry(
         )
     wage_id = row.wage_id
     expense_id = row.expense_id
-    payment_document_id = row.document_id if row.entry_type == EntryType.PAYMENT.value else None
+    travel_id = getattr(row, "travel_id", None)
+    payment_ids = payment_invoice_ids(row) if row.entry_type == EntryType.PAYMENT.value else []
     db.delete(row)
     db.flush()
-    if payment_document_id:
-        sync_invoice_payment_status(db, profile_id, payment_document_id)
+    if payment_ids:
+        sync_payment_invoices(db, profile_id, payment_ids)
     if wage_id:
         wage = (
             db.query(PracticeWage)
@@ -665,6 +727,16 @@ def delete_entry(
         )
         if expense:
             db.delete(expense)
+    if travel_id:
+        from app.modules.practice.models import PracticeTravel
+
+        travel = (
+            db.query(PracticeTravel)
+            .filter(PracticeTravel.id == travel_id, PracticeTravel.user_profile_id == profile_id)
+            .first()
+        )
+        if travel:
+            db.delete(travel)
     project.updated_at = datetime.utcnow()
     db.commit()
     return None

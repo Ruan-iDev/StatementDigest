@@ -1,6 +1,6 @@
 # TODO — living backlog
 
-**Last updated:** 2026-09-16 · **App version: 2.1.2** · last portable EXE `LedgerFlow-2.1.1-Portable.exe` (2.1.2 not cut yet)  
+**Last updated:** 2026-09-18 · **App version: 2.1.2** (source on `main` is ahead of the tag) · last portable EXE `LedgerFlow-2.1.1-Portable.exe` (2.1.2 EXE not cut)  
 **How to use:** Move items between sections as work finishes. Add new items from product conversations. After any session, update **Status snapshot**.  
 **Release notes:** [RELEASE_NOTES.md](./RELEASE_NOTES.md)
 
@@ -11,7 +11,8 @@
 | Area | Status |
 |------|--------|
 | Local app run (FE + BE) | Working on **UI :3470 / API :8470** (`run.py` default **no auto-reload** — set `LEDGERFLOW_RELOAD=1` for watch mode) |
-| Portable EXE | **v2.1.1** `LedgerFlow-2.1.1-Portable.exe` — next cut **v2.1.2** |
+| Portable EXE | **v2.1.1** `LedgerFlow-2.1.1-Portable.exe` — next cut should include **2.1.2 + this Work Flow slice** |
+| Work Flow · costing / print | **On main 2026-09-18** — Project Flow + Costing Sheet, wages/expense highlights, print preview (white paper), traveling, absences |
 | Soft grey + neon hub UI | Done |
 | Auth (login / guest / first-time setup) | Done v1.3 |
 | Returning-user greet + simple login | Done v1.3 |
@@ -69,14 +70,31 @@ Work only on **`feature/practice-module`**. See [MODULES.md](./MODULES.md).
 - [x] Wage payments snapshot the rate at save time — later staff-card increases do not rewrite past project wages
 - [x] Remove paper-trail lines (wages, expenses, notes, meetings, payments) so a wrong wage can be dropped and loaded again
 - [x] Invoice payment received (project paper trail or client file) marks the invoice Paid + red “Paid — Thank you” PDF stamp
+- [x] Received payment on a project file can allocate one lump sum to multiple invoices
+- [x] Project wages: override daily rate with commission (amount + reason) — lands on the staff wages statement
+- [x] Work Flow own ledgers (copied from Ledger Flow) under Configuration; wages pick/create a ledger
+- [x] App Settings on the side nav (bottom) with database location, backup, and restore
 - [x] Select multiple invoices (library + client file) and print them as one batch
 - [x] Projects library as small Windows-style **yellow folders**, A–Z left to right — number on the folder, name underneath
 - [x] Invoice print preview no longer sticks on Printing… after the first print
+- [x] Work Flow ledgers isolated from Ledger Flow; Configuration split Company / Quote-Invoice / Ledgers; create + edit (name, income/expense)
+- [x] Default wages ledger on staff profiles; Add vendor from expense list (type filters only, no keystroke-create)
+- [x] Ctrl+Enter saves trail forms, opens Add, then focuses date so Tab continues
+- [x] Received payment can allocate to an income ledger or credit an expense ledger
+- [x] Absence on the wages trail (R0, days from the selected date) — also on the staff wages list
+- [x] Project statement tabs: **Project Flow** and **Project Costing Sheet**
+- [x] Costing sheet: Monday–Sunday costs include wages; Total expenses / Total wages / Total project expenses; week totals and footer colours
+- [x] Wages breakdown by role (directors first) — paid amount, worked days, absent days (explicit Absent lines + days short of the rest of the crew that week)
+- [x] Expense lines on costing highlighted like wages (blue badge/row vs amber wages)
+- [x] Traveling on the paper trail (ledger, km, R/L, amount) and a Traveling block on costing
+- [x] Costing/Flow **Print** uses the quote/invoice preview (Print + Save PDF); print pages are **white paper** with themed wage/expense colours
+- [x] Opening a project folder no longer dies with **Not Found** when `practice_travels` was missing — table is migrated; travel list failure does not block the file
 - [ ] **Payslips** from staff wages (PDF, weekly/monthly, bank details on the staff card) — include days, rate, extras, and deductions
 - [ ] **HR file / report from wage notes** — each wage payment stores a performance note (good / poor work, unique events). Pull these onto a staff HR file later
 - [ ] **HR wage-increase report** — pull dated rate history (start / increase / decrease) to PDF
 - [ ] Staff statement PDF (same preview window as supplier statements)
 - [ ] Attach files to a project
+- [ ] Cut portable EXE that includes this Work Flow slice (still on `LedgerFlow-2.1.1-Portable.exe`)
 - [ ] Merge to `Develop---EXE-Build` only when a slice is shippable
 
 ### 5 — Cabinet Flow (new module — spec later)

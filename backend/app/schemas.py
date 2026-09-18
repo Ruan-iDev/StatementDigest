@@ -156,6 +156,11 @@ class LocalDataOpenResult(BaseModel):
     message: str
 
 
+class LocalDataRestoreResult(BaseModel):
+    message: str
+    database_path: str
+
+
 # ── Bank profiles ─────────────────────────────────────────────────────────
 
 

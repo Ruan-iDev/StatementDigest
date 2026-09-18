@@ -68,7 +68,7 @@ export function Modal({
               {description && <p className="text-sm text-muted-foreground">{description}</p>}
             </div>
             {!hideClose && onClose && (
-              <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+              <Button type="button" variant="ghost" size="icon" tabIndex={-1} onClick={onClose} aria-label="Close">
                 <X className="h-4 w-4" />
               </Button>
             )}

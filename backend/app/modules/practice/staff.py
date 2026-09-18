@@ -15,9 +15,11 @@ from app.config import DATA_DIR, ensure_data_dirs
 from app.database import get_db
 from app.deps import get_active_profile_id
 from app.modules.practice.flags import require_feature
+from app.modules.practice.ledgers import get_practice_ledger
 from app.modules.practice.models import (
     EntryType,
     PracticeEntry,
+    PracticeLedger,
     PracticeProject,
     PracticeStaff,
     PracticeStaffWageHistory,
@@ -152,6 +154,15 @@ def _snapshot_from_existing(existing: PracticeWage) -> tuple[Decimal | None, str
     return rate, period
 
 
+def _wage_kind(value: str | None, existing: PracticeWage | None = None) -> str:
+    raw = (value or (existing.kind if existing and existing.kind else "wage") or "wage").strip().lower()
+    if raw == "commission":
+        return "commission"
+    if raw in ("absence", "absent"):
+        return "absence"
+    return "wage"
+
+
 def _settle_wage(
     staff: PracticeStaff,
     *,
@@ -161,6 +172,8 @@ def _settle_wage(
     additions=None,
     existing: PracticeWage | None = None,
     staff_changed: bool = False,
+    kind: str | None = None,
+    override_reason: str | None = None,
 ) -> dict:
     cleaned_deduct = _clean_wage_lines(deductions, noun="deduction")
     cleaned_add = _clean_wage_lines(additions, noun="extra")
@@ -172,6 +185,59 @@ def _settle_wage(
     else:
         period = _wage_period(staff.wage_period)
         rate = _wage_amount(staff.wage_amount)
+
+    settled_kind = _wage_kind(kind, existing)
+    if settled_kind == "absence":
+        reason = _blank(override_reason)
+        if reason is None and existing is not None and kind is None:
+            reason = _blank(existing.override_reason)
+        if days is not None:
+            days_val = to_decimal(days)
+        elif existing is not None and existing.days is not None:
+            days_val = to_decimal(existing.days)
+        else:
+            days_val = Decimal("0")
+        if days_val <= 0:
+            raise HTTPException(400, "Enter how many days they were absent")
+        return {
+            "amount": _money(0),
+            "days": days_val,
+            "rate_amount": rate,
+            "rate_period": period,
+            "kind": "absence",
+            "override_reason": reason,
+            "deductions": [],
+            "additions": [],
+        }
+    if settled_kind == "commission":
+        reason = _blank(override_reason)
+        if reason is None and existing is not None and kind is None:
+            reason = _blank(existing.override_reason)
+        if not reason:
+            raise HTTPException(400, "A commission override needs a reason")
+        if amount is not None:
+            gross = _money(amount)
+        elif existing is not None:
+            existing_deduct = existing.deductions if isinstance(existing.deductions, list) else []
+            existing_add = existing.additions if isinstance(existing.additions, list) else []
+            gross = _money(existing.amount) + _line_total(existing_deduct) - _line_total(existing_add)
+        else:
+            raise HTTPException(400, "Enter the commission amount")
+        if gross <= 0:
+            raise HTTPException(400, "Commission amount must be greater than zero")
+        net = gross + add_total - deduct_total
+        if net <= 0:
+            raise HTTPException(400, "Net commission must be greater than zero after extras and deductions")
+        return {
+            "amount": net,
+            "days": None,
+            "rate_amount": rate,
+            "rate_period": period,
+            "kind": "commission",
+            "override_reason": reason,
+            "deductions": cleaned_deduct,
+            "additions": cleaned_add,
+        }
 
     if period == "day":
         if days is not None:
@@ -194,6 +260,8 @@ def _settle_wage(
             "days": days_val,
             "rate_amount": rate,
             "rate_period": "day",
+            "kind": "wage",
+            "override_reason": None,
             "deductions": cleaned_deduct,
             "additions": cleaned_add,
         }
@@ -216,12 +284,20 @@ def _settle_wage(
         "days": None,
         "rate_amount": rate,
         "rate_period": period,
+        "kind": "wage",
+        "override_reason": None,
         "deductions": cleaned_deduct,
         "additions": cleaned_add,
     }
 
 
 def _wage_title(name: str, row: PracticeWage) -> str:
+    if (row.kind or "wage") == "commission":
+        return f"Commission · {name}"
+    if (row.kind or "wage") == "absence":
+        if row.days is not None:
+            return f"Absence · {name} · {_fmt_days(row.days)} days"
+        return f"Absence · {name}"
     if row.days is not None:
         return f"Wages · {name} · {_fmt_days(row.days)} days"
     return f"Wages · {name}"
@@ -229,6 +305,19 @@ def _wage_title(name: str, row: PracticeWage) -> str:
 
 def _wage_trail_body(row: PracticeWage) -> str | None:
     lines: list[str] = []
+    if (row.kind or "wage") == "absence":
+        lines.append("Absent")
+        if row.days is not None:
+            lines.append(f"{_fmt_days(row.days)} days")
+        reason = _blank(row.override_reason)
+        if reason:
+            lines.append(reason)
+        return " · ".join(lines) if lines else "Absent"
+    if (row.kind or "wage") == "commission":
+        lines.append("Override daily wage")
+        reason = _blank(row.override_reason)
+        if reason:
+            lines.append(reason)
     if row.days is not None and row.rate_amount is not None:
         lines.append(
             f"{_fmt_days(row.days)} days × {_fmt_money_plain(row.rate_amount)} per day"
@@ -302,15 +391,19 @@ def _record_wage_history(
     )
 
 
-def _staff_out(row: PracticeStaff) -> StaffOut:
+def _staff_out(row: PracticeStaff, db: Session | None = None) -> StaffOut:
     data = StaffOut.model_validate(row)
     data.has_photo = bool(row.photo_path)
+    if db is not None and row.default_ledger_id:
+        led = db.get(PracticeLedger, row.default_ledger_id)
+        data.default_ledger_name = led.name if led else None
     return data
 
 
 def _wage_out(db: Session, row: PracticeWage) -> WageOut:
     staff = db.get(PracticeStaff, row.staff_id)
     project = db.get(PracticeProject, row.project_id)
+    led = db.get(PracticeLedger, row.ledger_id) if row.ledger_id else None
     return WageOut(
         id=row.id,
         project_id=row.project_id,
@@ -321,6 +414,10 @@ def _wage_out(db: Session, row: PracticeWage) -> WageOut:
         days=to_decimal(row.days) if row.days is not None else None,
         rate_amount=_money(row.rate_amount) if row.rate_amount is not None else None,
         rate_period=row.rate_period,
+        kind=row.kind or "wage",
+        override_reason=row.override_reason,
+        ledger_id=row.ledger_id,
+        ledger_name=led.name if led else None,
         deductions=_line_outs(row.deductions),
         additions=_line_outs(row.additions),
         occurred_on=row.occurred_on,
@@ -416,7 +513,7 @@ def list_staff(
             )
         )
     rows = query.order_by(PracticeStaff.name.asc()).limit(limit).all()
-    return [_staff_out(r) for r in rows]
+    return [_staff_out(r, db) for r in rows]
 
 
 @router.post("/staff", response_model=StaffOut, status_code=201)
@@ -425,6 +522,8 @@ def create_staff(
     db: Session = Depends(get_db),
     profile_id: int = Depends(get_active_profile_id),
 ):
+    if body.default_ledger_id is not None:
+        get_practice_ledger(db, profile_id, body.default_ledger_id, expect_type="expense")
     row = PracticeStaff(
         user_profile_id=profile_id,
         name=body.name.strip(),
@@ -445,6 +544,7 @@ def create_staff(
         bank_branch_code=_blank(body.bank_branch_code),
         wage_amount=_wage_amount(body.wage_amount),
         wage_period=_wage_period(body.wage_period),
+        default_ledger_id=body.default_ledger_id,
         notes=_blank(body.notes),
     )
     db.add(row)
@@ -452,7 +552,7 @@ def create_staff(
     _record_wage_history(db, profile_id, row, effective_on=body.wage_effective_on)
     db.commit()
     db.refresh(row)
-    return _staff_out(row)
+    return _staff_out(row, db)
 
 
 @router.get("/staff/{staff_id}", response_model=StaffOut)
@@ -461,7 +561,7 @@ def get_staff(
     db: Session = Depends(get_db),
     profile_id: int = Depends(get_active_profile_id),
 ):
-    return _staff_out(_get_staff(db, profile_id, staff_id))
+    return _staff_out(_get_staff(db, profile_id, staff_id), db)
 
 
 @router.patch("/staff/{staff_id}", response_model=StaffOut)
@@ -499,6 +599,8 @@ def update_staff(
         data["wage_amount"] = _wage_amount(data["wage_amount"])
     if "wage_period" in data:
         data["wage_period"] = _wage_period(data["wage_period"])
+    if "default_ledger_id" in data and data["default_ledger_id"] is not None:
+        get_practice_ledger(db, profile_id, data["default_ledger_id"], expect_type="expense")
     effective = data.pop("wage_effective_on", None)
     old_amount = row.wage_amount
     old_period = row.wage_period
@@ -517,7 +619,7 @@ def update_staff(
     # rate_amount snapshotted when they were loaded — do not rewrite them.
     db.commit()
     db.refresh(row)
-    return _staff_out(row)
+    return _staff_out(row, db)
 
 
 @router.get("/staff/{staff_id}/photo")
@@ -571,7 +673,7 @@ async def upload_staff_photo(
     row.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)
-    return _staff_out(row)
+    return _staff_out(row, db)
 
 
 @router.get("/staff/{staff_id}/statement", response_model=StaffStatementOut)
@@ -594,7 +696,7 @@ def staff_statement(
     paid = sum((_money(w.amount) for w in wages), Decimal("0.00"))
     history = _list_wage_history(db, profile_id, row.id)
     return StaffStatementOut(
-        staff=_staff_out(row),
+        staff=_staff_out(row, db),
         wages=outs,
         wage_history=history,
         totals=SupplierSpendTotals(spent=_money(paid), count=len(outs)),
@@ -651,12 +753,17 @@ def create_wage(
     staff = _get_staff(db, profile_id, body.staff_id)
     if staff.is_archived:
         raise HTTPException(400, "This staff member is archived")
+    ledger_id = body.ledger_id
+    if ledger_id is not None:
+        get_practice_ledger(db, profile_id, ledger_id, expect_type="expense")
     settled = _settle_wage(
         staff,
         amount=body.amount,
         days=body.days,
         deductions=body.deductions,
         additions=body.additions,
+        kind=body.kind,
+        override_reason=body.override_reason,
     )
     row = PracticeWage(
         user_profile_id=profile_id,
@@ -666,6 +773,9 @@ def create_wage(
         days=settled["days"],
         rate_amount=settled["rate_amount"],
         rate_period=settled["rate_period"],
+        kind=settled["kind"],
+        override_reason=settled["override_reason"],
+        ledger_id=ledger_id,
         deductions=settled["deductions"],
         additions=settled["additions"],
         occurred_on=body.occurred_on or date.today(),
@@ -699,7 +809,10 @@ def update_wage(
     staff_id = data.get("staff_id", row.staff_id)
     staff = _get_staff(db, profile_id, staff_id)
     staff_changed = "staff_id" in data and data["staff_id"] is not None and data["staff_id"] != row.staff_id
-    if any(key in data for key in ("amount", "days", "deductions", "additions", "staff_id")):
+    if any(
+        key in data
+        for key in ("amount", "days", "deductions", "additions", "staff_id", "kind", "override_reason")
+    ):
         settled = _settle_wage(
             staff,
             amount=data["amount"] if "amount" in data else None,
@@ -708,8 +821,12 @@ def update_wage(
             additions=data["additions"] if "additions" in data else row.additions,
             existing=row,
             staff_changed=staff_changed,
+            kind=data["kind"] if "kind" in data else row.kind,
+            override_reason=data["override_reason"] if "override_reason" in data else row.override_reason,
         )
         data.update(settled)
+    if "ledger_id" in data and data["ledger_id"] is not None:
+        get_practice_ledger(db, profile_id, data["ledger_id"], expect_type="expense")
     if "notes" in data:
         data["notes"] = _blank(data["notes"]) if isinstance(data["notes"], str) else data["notes"]
     for key, value in data.items():

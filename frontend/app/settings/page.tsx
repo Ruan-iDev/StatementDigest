@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Zap, UserRound, SlidersHorizontal, Blocks, Palette, Eraser } from "lucide-react";
+import { BookOpen, Zap, UserRound, SlidersHorizontal, Blocks, Palette, Eraser, HardDrive } from "lucide-react";
 import { HubTile } from "@/components/hub-tile";
 import { useProfileOptional } from "@/components/profile-provider";
 
@@ -15,7 +15,8 @@ export default function SettingsPage() {
         </p>
         <h1 className="page-title">Settings</h1>
         <p className="page-subtitle max-w-xl">
-          Profile, ledgers, rules, and preferences. Choose your bank when you upload statements.
+          App-wide setup for this PC — profile, look, modules, and the local database. Ledger Flow
+          account lists stay here too.
           {active ? (
             <>
               {" "}
@@ -29,9 +30,16 @@ export default function SettingsPage() {
         <HubTile
           href="/profiles"
           title="My Profile"
-          description="Personal details, local data file location, and switch workspaces (never mixed)."
+          description="Personal details and switch workspaces (never mixed)."
           icon={UserRound}
           accent="violet"
+        />
+        <HubTile
+          href="/settings/data"
+          title="Database"
+          description="Where data lives on this PC. Backup and restore when you move devices."
+          icon={HardDrive}
+          accent="lime"
         />
         <HubTile
           href="/ledgers"

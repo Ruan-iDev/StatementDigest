@@ -177,8 +177,8 @@ export function PracticeStaffFilePage() {
         <CardHeader>
           <CardTitle>Wages paid</CardTitle>
           <CardDescription>
-            Oldest at the top. Each line keeps the rate used that day. Open a project to see the
-            paper trail. Payslips come later.
+            Oldest at the top. Daily wages keep the rate used that day. Commission and absences
+            (R0) also land here. Open a project to see the paper trail.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -194,24 +194,40 @@ export function PracticeStaffFilePage() {
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-transparent px-1 py-2 text-sm hover:border-[hsl(var(--neon-cyan)/0.45)]"
               >
                 <span className="min-w-0">
-                  <span className="font-medium">{w.project_name || "Project"}</span>
+                  <span className="font-medium">
+                    {w.kind === "commission" ? "Commission · " : w.kind === "absence" ? "Absence · " : ""}
+                    {w.project_name || "Project"}
+                  </span>
                   <span className="block text-[11px] text-muted-foreground">
                     {[
                       w.occurred_on ? formatDate(w.occurred_on) : "No date",
-                      w.days != null && w.days !== ""
-                        ? `${formatWageDays(w.days)} days${
-                            w.rate_amount != null && w.rate_amount !== ""
-                              ? ` × ${formatMoney(w.rate_amount)}/day`
-                              : ""
-                          }`
-                        : null,
-                      (w.additions || []).length
+                      w.ledger_name ? `ledger ${w.ledger_name}` : null,
+                      w.kind === "absence"
+                        ? [
+                            w.days != null && w.days !== ""
+                              ? `${formatWageDays(w.days)} days`
+                              : "Absent",
+                            w.occurred_on ? `from ${formatDate(w.occurred_on)}` : null,
+                            w.override_reason || null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : w.kind === "commission"
+                          ? w.override_reason || "Daily wage override"
+                          : w.days != null && w.days !== ""
+                          ? `${formatWageDays(w.days)} days${
+                              w.rate_amount != null && w.rate_amount !== ""
+                                ? ` × ${formatMoney(w.rate_amount)}/day`
+                                : ""
+                            }`
+                          : null,
+                      w.kind !== "commission" && w.kind !== "absence" && (w.additions || []).length
                         ? `plus ${(w.additions || []).map((d) => d.description).join(", ")}`
                         : null,
-                      (w.deductions || []).length
+                      w.kind !== "commission" && w.kind !== "absence" && (w.deductions || []).length
                         ? `less ${(w.deductions || []).map((d) => d.description).join(", ")}`
                         : null,
-                      w.notes || null,
+                      w.kind !== "commission" && w.kind !== "absence" ? w.notes || null : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}

@@ -11,6 +11,26 @@ class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PracticeLedgerCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    type: str = Field(pattern="^(income|expense)$")
+
+
+class PracticeLedgerUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    type: Optional[str] = Field(default=None, pattern="^(income|expense)$")
+    is_archived: Optional[bool] = None
+
+
+class PracticeLedgerOut(ORMModel):
+    id: int
+    name: str
+    type: str
+    is_archived: bool
+    sort_order: int
+    created_at: datetime
+
+
 class PartyCreate(BaseModel):
     kind: str = Field(pattern="^(client|supplier)$")
     party_type: str = "individual"
@@ -72,6 +92,12 @@ class PartyOut(ORMModel):
     updated_at: datetime
 
 
+class ProjectChecklistItem(BaseModel):
+    id: str = ""
+    text: str = ""
+    done: bool = False
+
+
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=240)
     reference: Optional[str] = None
@@ -80,6 +106,7 @@ class ProjectCreate(BaseModel):
     started_on: Optional[date] = None
     due_on: Optional[date] = None
     summary: Optional[str] = None
+    checklist: list[ProjectChecklistItem] = Field(default_factory=list)
 
 
 class ProjectUpdate(BaseModel):
@@ -90,6 +117,7 @@ class ProjectUpdate(BaseModel):
     started_on: Optional[date] = None
     due_on: Optional[date] = None
     summary: Optional[str] = None
+    checklist: Optional[list[ProjectChecklistItem]] = None
     is_archived: Optional[bool] = None
 
 
@@ -99,6 +127,8 @@ class EntryCreate(BaseModel):
     body: Optional[str] = None
     amount: Optional[Decimal] = None
     document_id: Optional[int] = None
+    document_ids: Optional[list[int]] = None
+    ledger_id: Optional[int] = None
     occurred_on: Optional[date] = None
     occurred_time: Optional[str] = None
 
@@ -108,6 +138,8 @@ class EntryUpdate(BaseModel):
     body: Optional[str] = None
     amount: Optional[Decimal] = None
     document_id: Optional[int] = None
+    document_ids: Optional[list[int]] = None
+    ledger_id: Optional[int] = None
     occurred_on: Optional[date] = None
     occurred_time: Optional[str] = None
 
@@ -120,8 +152,11 @@ class EntryOut(ORMModel):
     body: Optional[str] = None
     amount: Optional[Decimal] = None
     document_id: Optional[int] = None
+    document_ids: Optional[list[int]] = None
+    ledger_id: Optional[int] = None
     expense_id: Optional[int] = None
     wage_id: Optional[int] = None
+    travel_id: Optional[int] = None
     occurred_on: Optional[date] = None
     occurred_time: Optional[str] = None
     created_at: datetime
@@ -137,6 +172,7 @@ class ProjectOut(ORMModel):
     started_on: Optional[date] = None
     due_on: Optional[date] = None
     summary: Optional[str] = None
+    checklist: list[ProjectChecklistItem] = Field(default_factory=list)
     is_archived: bool
     entry_count: int = 0
     created_at: datetime
@@ -206,6 +242,21 @@ class WorkflowReportLine(BaseModel):
     amount: Decimal
 
 
+class WorkflowPLLine(BaseModel):
+    ledger_id: Optional[int] = None
+    ledger_name: str
+    amount: Decimal
+    count: int = 0
+
+
+class WorkflowPLOut(BaseModel):
+    income: list[WorkflowPLLine] = Field(default_factory=list)
+    expenses: list[WorkflowPLLine] = Field(default_factory=list)
+    income_total: Decimal = Decimal("0.00")
+    expense_total: Decimal = Decimal("0.00")
+    net: Decimal = Decimal("0.00")
+
+
 class WorkflowReportOut(BaseModel):
     currency: str
     fy_start_month: int
@@ -220,6 +271,7 @@ class WorkflowReportOut(BaseModel):
     expenses: list[WorkflowReportLine] = Field(default_factory=list)
     wages: list[WorkflowReportLine] = Field(default_factory=list)
     totals: StatementTotals
+    pl: WorkflowPLOut = Field(default_factory=WorkflowPLOut)
 
 
 class FeatureFlagsOut(BaseModel):
@@ -490,6 +542,42 @@ class ExpenseOut(ORMModel):
     created_at: datetime
 
 
+class TravelCreate(BaseModel):
+    project_id: int
+    staff_id: int
+    ledger_id: int
+    km: Decimal
+    price_per_litre: Decimal
+    amount: Decimal
+    occurred_on: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class TravelUpdate(BaseModel):
+    staff_id: Optional[int] = None
+    ledger_id: Optional[int] = None
+    km: Optional[Decimal] = None
+    price_per_litre: Optional[Decimal] = None
+    amount: Optional[Decimal] = None
+    occurred_on: Optional[date] = None
+    notes: Optional[str] = None
+
+
+class TravelOut(ORMModel):
+    id: int
+    project_id: int
+    staff_id: int
+    staff_name: Optional[str] = None
+    ledger_id: int
+    ledger_name: Optional[str] = None
+    km: Decimal
+    price_per_litre: Decimal
+    amount: Decimal
+    occurred_on: Optional[date] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
 class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     category: Optional[str] = Field(default=None, max_length=80)
@@ -545,6 +633,7 @@ class StaffCreate(BaseModel):
     wage_amount: Optional[Decimal] = None
     wage_period: Optional[str] = "week"
     wage_effective_on: Optional[date] = None
+    default_ledger_id: Optional[int] = None
     notes: Optional[str] = None
 
 
@@ -573,6 +662,8 @@ class StaffOut(ORMModel):
     bank_branch_code: Optional[str] = None
     wage_amount: Optional[Decimal] = None
     wage_period: str = "week"
+    default_ledger_id: Optional[int] = None
+    default_ledger_name: Optional[str] = None
     photo_path: Optional[str] = None
     has_photo: bool = False
     notes: Optional[str] = None
@@ -608,6 +699,9 @@ class WageCreate(BaseModel):
     staff_id: int
     amount: Optional[Decimal] = None
     days: Optional[Decimal] = None
+    kind: Optional[str] = "wage"
+    override_reason: Optional[str] = None
+    ledger_id: Optional[int] = None
     occurred_on: Optional[date] = None
     notes: Optional[str] = None
     deductions: list[WageDeductionIn] = Field(default_factory=list)
@@ -618,6 +712,9 @@ class WageUpdate(BaseModel):
     staff_id: Optional[int] = None
     amount: Optional[Decimal] = None
     days: Optional[Decimal] = None
+    kind: Optional[str] = None
+    override_reason: Optional[str] = None
+    ledger_id: Optional[int] = None
     occurred_on: Optional[date] = None
     notes: Optional[str] = None
     deductions: Optional[list[WageDeductionIn]] = None
@@ -634,6 +731,10 @@ class WageOut(ORMModel):
     days: Optional[Decimal] = None
     rate_amount: Optional[Decimal] = None
     rate_period: Optional[str] = None
+    kind: str = "wage"
+    override_reason: Optional[str] = None
+    ledger_id: Optional[int] = None
+    ledger_name: Optional[str] = None
     deductions: list[WageDeductionOut] = Field(default_factory=list)
     additions: list[WageDeductionOut] = Field(default_factory=list)
     occurred_on: Optional[date] = None
@@ -675,6 +776,9 @@ class ProjectStatementOut(BaseModel):
     invoices: list[DocumentOut]
     expenses: list[ExpenseOut]
     payments: list[EntryOut] = Field(default_factory=list)
+    wages: list[WageOut] = Field(default_factory=list)
+    travels: list[TravelOut] = Field(default_factory=list)
     totals: StatementTotals
     currency: str = "ZAR"
     has_logo: bool = False
+    company_name: Optional[str] = None

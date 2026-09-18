@@ -11,6 +11,7 @@ import type {
   PracticeIssuer,
   PracticeEntry,
   PracticeExpense,
+  PracticeLedger,
   PracticeFlags,
   PracticeParty,
   PracticeProject,
@@ -19,6 +20,7 @@ import type {
   PracticeStatus,
   PracticeProduct,
   PracticeTemplate,
+  PracticeTravel,
   PracticeWage,
   ProjectStatement,
   ProjectWrite,
@@ -46,6 +48,25 @@ export const practiceApi = {
     if (fyStartYear != null) q.set("fy_start_year", String(fyStartYear));
     const suffix = q.toString() ? `?${q}` : "";
     return apiRequest<WorkflowReport>(`/practice/reports${suffix}`);
+  },
+  ledgers: {
+    list: (type?: "income" | "expense", includeArchived = false) => {
+      const q = new URLSearchParams();
+      if (type) q.set("type", type);
+      if (includeArchived) q.set("include_archived", "true");
+      const suffix = q.toString() ? `?${q}` : "";
+      return apiRequest<PracticeLedger[]>(`/practice/ledgers${suffix}`);
+    },
+    create: (body: { name: string; type: "income" | "expense" }) =>
+      apiRequest<PracticeLedger>("/practice/ledgers", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (id: number, body: { name?: string; type?: "income" | "expense"; is_archived?: boolean }) =>
+      apiRequest<PracticeLedger>(`/practice/ledgers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
   },
   flags: {
     get: () => apiRequest<PracticeFlags>("/practice/flags"),
@@ -171,6 +192,9 @@ export const practiceApi = {
       staff_id: number;
       amount?: number | string | null;
       days?: number | string | null;
+      kind?: "wage" | "commission" | "absence";
+      override_reason?: string | null;
+      ledger_id?: number | null;
       occurred_on?: string | null;
       notes?: string | null;
       deductions?: { description: string; amount: number | string }[];
@@ -182,6 +206,9 @@ export const practiceApi = {
         staff_id?: number;
         amount?: number | string | null;
         days?: number | string | null;
+        kind?: "wage" | "commission" | "absence";
+        override_reason?: string | null;
+        ledger_id?: number | null;
         occurred_on?: string | null;
         notes?: string | null;
         deductions?: { description: string; amount: number | string }[];
@@ -220,6 +247,8 @@ export const practiceApi = {
         body?: string;
         amount?: number | string;
         document_id?: number | null;
+        document_ids?: number[] | null;
+        ledger_id?: number | null;
         occurred_on?: string | null;
         occurred_time?: string | null;
       }
@@ -236,6 +265,8 @@ export const practiceApi = {
         body?: string | null;
         amount?: number | string | null;
         document_id?: number | null;
+        document_ids?: number[] | null;
+        ledger_id?: number | null;
         occurred_on?: string | null;
         occurred_time?: string | null;
       }
@@ -417,6 +448,42 @@ export const practiceApi = {
       if (!res.ok) return null;
       return URL.createObjectURL(await res.blob());
     },
+  },
+  travels: {
+    list: (projectId?: number) =>
+      apiRequest<PracticeTravel[]>(
+        `/practice/travels${projectId ? `?project_id=${projectId}` : ""}`
+      ),
+    create: (body: {
+      project_id: number;
+      staff_id: number;
+      ledger_id: number;
+      km: number | string;
+      price_per_litre: number | string;
+      amount: number | string;
+      occurred_on?: string | null;
+      notes?: string | null;
+    }) =>
+      apiRequest<PracticeTravel>("/practice/travels", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (
+      travelId: number,
+      body: {
+        staff_id?: number;
+        ledger_id?: number;
+        km?: number | string;
+        price_per_litre?: number | string;
+        amount?: number | string;
+        occurred_on?: string | null;
+        notes?: string | null;
+      }
+    ) =>
+      apiRequest<PracticeTravel>(`/practice/travels/${travelId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
   },
   expenses: {
     list: (projectId?: number) =>

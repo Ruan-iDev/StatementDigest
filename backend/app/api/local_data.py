@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
+import shutil
+import sqlite3
 import subprocess
 import sys
+import tempfile
+import zipfile
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from app.config import (
     DATA_DIR,
@@ -18,7 +26,7 @@ from app.config import (
     default_user_data_dir,
     ensure_data_dirs,
 )
-from app.schemas import LocalDataOpenBody, LocalDataOpenResult, LocalDataOut
+from app.schemas import LocalDataOpenBody, LocalDataOpenResult, LocalDataOut, LocalDataRestoreResult
 
 router = APIRouter(tags=["local-data"])
 
@@ -127,4 +135,155 @@ def open_local_data(body: LocalDataOpenBody) -> LocalDataOpenResult:
     return LocalDataOpenResult(
         opened=opened,
         message=f"Opened {label} in your file manager: {opened}",
+    )
+
+
+_BACKUP_KIND = "data-backup"
+_SKIP_NAMES = {"ledgerflow.db-wal", "ledgerflow.db-shm"}
+
+
+def _app_version() -> str:
+    return (os.environ.get("LEDGERFLOW_APP_VERSION") or "2.1.2").strip() or "2.1.2"
+
+
+def _unlink(path: str) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def _checkpoint_db() -> None:
+    if not DB_PATH.is_file():
+        return
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _write_backup_zip() -> Path:
+    ensure_data_dirs()
+    _checkpoint_db()
+    fd, zip_path = tempfile.mkstemp(prefix="ledgerflow-backup-", suffix=".zip")
+    os.close(fd)
+    db_fd, tmp_db_s = tempfile.mkstemp(prefix="ledgerflow-bak-", suffix=".db")
+    os.close(db_fd)
+    tmp_db = Path(tmp_db_s)
+    try:
+        if DB_PATH.is_file():
+            src = sqlite3.connect(str(DB_PATH))
+            dst = sqlite3.connect(str(tmp_db))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+                src.close()
+        manifest = {
+            "app": "LedgerFlow",
+            "kind": _BACKUP_KIND,
+            "version": _app_version(),
+            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+            if tmp_db.is_file() and tmp_db.stat().st_size > 0:
+                zf.write(tmp_db, "ledgerflow.db")
+            if DATA_DIR.is_dir():
+                for path in DATA_DIR.rglob("*"):
+                    if not path.is_file():
+                        continue
+                    if path.name in _SKIP_NAMES or path.name == "ledgerflow.db":
+                        continue
+                    arc = path.relative_to(DATA_DIR).as_posix()
+                    zf.write(path, arc)
+    except Exception:
+        _unlink(zip_path)
+        raise
+    finally:
+        _unlink(str(tmp_db))
+    return Path(zip_path)
+
+
+@router.get("/local-data/backup")
+def download_backup():
+    """Download a zip of the on-device database plus uploads and logos."""
+    path = _write_backup_zip()
+    filename = f"LedgerFlow-backup-{date.today().isoformat()}.zip"
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=filename,
+        background=BackgroundTask(_unlink, str(path)),
+    )
+
+
+@router.post("/local-data/restore", response_model=LocalDataRestoreResult)
+async def restore_backup(file: UploadFile = File(...)):
+    """Replace this PC's data from a LedgerFlow backup zip (device migrate)."""
+    name = (file.filename or "").lower()
+    if not name.endswith(".zip"):
+        raise HTTPException(400, "Upload a LedgerFlow backup .zip file")
+    ensure_data_dirs()
+    raw = await file.read()
+    if len(raw) < 64:
+        raise HTTPException(400, "That file is empty or not a backup")
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ledgerflow-restore-"))
+    zip_path = tmp_dir / "backup.zip"
+    try:
+        zip_path.write_bytes(raw)
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(tmp_dir / "unpack")
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(400, "That file is not a valid zip backup") from exc
+        unpack = tmp_dir / "unpack"
+        manifest_path = unpack / "manifest.json"
+        db_file = unpack / "ledgerflow.db"
+        if not db_file.is_file():
+            nested = list(unpack.rglob("ledgerflow.db"))
+            db_file = nested[0] if nested else db_file
+            if nested:
+                unpack = db_file.parent
+                manifest_path = unpack / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                meta = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise HTTPException(400, "Backup manifest is unreadable") from exc
+            if meta.get("kind") != _BACKUP_KIND or meta.get("app") != "LedgerFlow":
+                raise HTTPException(400, "That zip is not a LedgerFlow data backup")
+        if not db_file.is_file():
+            raise HTTPException(400, "Backup is missing ledgerflow.db")
+
+        from app.database import engine, init_db
+
+        engine.dispose()
+        _checkpoint_db()
+        live = sqlite3.connect(str(DB_PATH))
+        src = sqlite3.connect(str(db_file))
+        try:
+            src.backup(live)
+            live.commit()
+        finally:
+            src.close()
+            live.close()
+        engine.dispose()
+
+        for folder in ("uploads", "logos"):
+            src_dir = unpack / folder
+            dest_dir = DATA_DIR / folder
+            if src_dir.is_dir():
+                if dest_dir.exists():
+                    shutil.rmtree(dest_dir)
+                shutil.copytree(src_dir, dest_dir)
+        init_db()
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    return LocalDataRestoreResult(
+        message="Backup restored. Refresh the app — Work Flow and Ledger Flow data are on this PC.",
+        database_path=str(DB_PATH.resolve()),
     )

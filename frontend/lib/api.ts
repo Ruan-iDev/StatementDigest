@@ -711,6 +711,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ target }),
       }),
+    backup: () => downloadAuthenticated("/local-data/backup", "LedgerFlow-backup.zip"),
+    restore: async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return request<{ message: string; database_path: string }>("/local-data/restore", {
+        method: "POST",
+        body: fd,
+      });
+    },
   },
   ledgers: {
     list: (includeArchived = false) =>

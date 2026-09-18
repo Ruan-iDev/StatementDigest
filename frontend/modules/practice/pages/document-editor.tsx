@@ -4,12 +4,11 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerE
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, GripVertical, ImagePlus, Plus, Printer, Trash2 } from "lucide-react";
-import { api, type Ledger } from "@/lib/api";
 import { cn, formatMoney } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { TypeaheadSelect } from "@/components/ui/typeahead-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { practiceApi } from "@/modules/practice/lib/api";
@@ -27,6 +26,7 @@ import {
   type BankSnapshot,
   type DocumentLine,
   type NoteBlock,
+  type PracticeLedger,
   type PracticeProduct,
 } from "@/modules/practice/lib/types";
 
@@ -235,7 +235,7 @@ export function PracticeDocumentEditorPage() {
   linesRef.current = lines;
   draggingIdRef.current = draggingId;
   const [products, setProducts] = useState<PracticeProduct[]>([]);
-  const [ledgers, setLedgers] = useState<Ledger[]>([]);
+  const [ledgers, setLedgers] = useState<PracticeLedger[]>([]);
   const [currency, setCurrency] = useState("ZAR");
   const [vatEnabled, setVatEnabled] = useState(false);
   const [vatRate, setVatRate] = useState(15);
@@ -271,7 +271,7 @@ export function PracticeDocumentEditorPage() {
     async function boot() {
       try {
         const [ledgerList, productList] = await Promise.all([
-          api.ledgers.list(),
+          practiceApi.ledgers.list(),
           practiceApi.products.list(false, undefined, 200).catch(() => [] as PracticeProduct[]),
         ]);
         if (cancelled) return;
@@ -592,6 +592,16 @@ export function PracticeDocumentEditorPage() {
     setBusy(true);
     try {
       setError(null);
+      let resolvedIncomeId: number | null = kind === "invoice" ? Number(incomeLedgerId) : null;
+      if (kind === "invoice" && !Number.isFinite(resolvedIncomeId as number)) {
+        const created = await practiceApi.ledgers.create({
+          name: incomeLedgerId.trim(),
+          type: "income",
+        });
+        setLedgers((prev) => [...prev, created]);
+        setIncomeLedgerId(String(created.id));
+        resolvedIncomeId = created.id;
+      }
       const notesJson = notes
         .map((b) =>
           b.type === "image"
@@ -610,7 +620,7 @@ export function PracticeDocumentEditorPage() {
         issued_on: issuedOn || null,
         party_id: partyId,
         project_id: projectId,
-        income_ledger_id: kind === "invoice" ? Number(incomeLedgerId) : null,
+        income_ledger_id: resolvedIncomeId,
         source_quote_id: sourceQuoteId,
         notes: notesText || null,
         notes_json: notesJson,
@@ -840,14 +850,16 @@ export function PracticeDocumentEditorPage() {
           {kind === "invoice" && (
             <div className="max-w-sm space-y-1.5">
               <Label>Sales / income ledger</Label>
-              <Select value={incomeLedgerId} onChange={(e) => setIncomeLedgerId(e.target.value)}>
-                <option value="">Select ledger</option>
-                {incomeLedgers.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </Select>
+              <TypeaheadSelect
+                options={incomeLedgers.map((l) => ({ id: String(l.id), label: l.name }))}
+                value={incomeLedgerId}
+                onChange={setIncomeLedgerId}
+                placeholder="Type a ledger, or a new name…"
+                emptyMessage="No ledgers match — type a name to create one"
+                allowCustom
+                customHint="Create ledger"
+                aria-label="Sales / income ledger"
+              />
             </div>
           )}
 

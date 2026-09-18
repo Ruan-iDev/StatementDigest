@@ -38,6 +38,7 @@ class EntryType(str, enum.Enum):
     PAYMENT = "payment"
     MEETING = "meeting"
     WAGE = "wage"
+    TRAVEL = "travel"
 
 
 class DocumentKind(str, enum.Enum):
@@ -109,6 +110,7 @@ class PracticeProject(Base):
     started_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     due_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    checklist_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -198,9 +200,9 @@ class PracticeDocument(Base):
     project_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("practice_projects.id"), nullable=True, index=True
     )
-    # Invoice only — core income ledger (Sales / Invoice Income, etc.)
+    # Invoice only — Work Flow income ledger
     income_ledger_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("ledgers.id"), nullable=True, index=True
+        Integer, ForeignKey("practice_ledgers.id"), nullable=True, index=True
     )
     source_quote_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("practice_documents.id"), nullable=True, index=True
@@ -251,8 +253,28 @@ class PracticeDocumentLine(Base):
     document: Mapped["PracticeDocument"] = relationship(back_populates="lines")
 
 
+class PracticeLedger(Base):
+    """Work Flow ledgers — separate from Ledger Flow. Copied once from core ledgers."""
+
+    __tablename__ = "practice_ledgers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_profiles.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # income | expense
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    source_ledger_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class PracticeExpense(Base):
-    """Running cost on a project file, assigned to a core expense ledger."""
+    """Running cost on a project file, assigned to a Work Flow expense ledger."""
 
     __tablename__ = "practice_expenses"
 
@@ -263,7 +285,9 @@ class PracticeExpense(Base):
     project_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("practice_projects.id"), nullable=False, index=True
     )
-    ledger_id: Mapped[int] = mapped_column(Integer, ForeignKey("ledgers.id"), nullable=False, index=True)
+    ledger_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("practice_ledgers.id"), nullable=False, index=True
+    )
     supplier_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("practice_parties.id"), nullable=True, index=True
     )
@@ -273,6 +297,36 @@ class PracticeExpense(Base):
     incurred_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped[Optional["PracticeProject"]] = relationship()
+
+
+class PracticeTravel(Base):
+    """Fuel / mileage on a project file. All figures are entered by hand."""
+
+    __tablename__ = "practice_travels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_profiles.id"), nullable=False, index=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("practice_projects.id"), nullable=False, index=True
+    )
+    staff_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("practice_staff.id"), nullable=False, index=True
+    )
+    ledger_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("practice_ledgers.id"), nullable=False, index=True
+    )
+    km: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0.00"))
+    price_per_litre: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0.0000")
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0.00"))
+    occurred_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project: Mapped[Optional["PracticeProject"]] = relationship()
@@ -331,6 +385,9 @@ class PracticeStaff(Base):
     bank_branch_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     wage_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
     wage_period: Mapped[str] = mapped_column(String(20), nullable=False, default="week")
+    default_ledger_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("practice_ledgers.id"), nullable=True, index=True
+    )
     photo_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -368,6 +425,12 @@ class PracticeWage(Base):
     rate_period: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     deductions: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     additions: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # wage = days × rate (or period amount). commission = manual override (profit split).
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="wage")
+    override_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ledger_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("practice_ledgers.id"), nullable=True, index=True
+    )
     occurred_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -413,11 +476,19 @@ class PracticeEntry(Base):
     document_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("practice_documents.id"), nullable=True
     )
+    # Payment allocations: [invoice_id, ...] — document_id stays the first for older rows
+    document_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    ledger_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("practice_ledgers.id"), nullable=True, index=True
+    )
     expense_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("practice_expenses.id"), nullable=True
     )
     wage_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("practice_wages.id"), nullable=True
+    )
+    travel_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("practice_travels.id"), nullable=True
     )
     occurred_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
     occurred_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)

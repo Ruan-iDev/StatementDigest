@@ -90,13 +90,11 @@ export function ClientPicker({
       options={options}
       value={value != null ? String(value) : ""}
       fallbackLabel={fallback}
-      placeholder={kind === "supplier" ? "Type a supplier…" : "Type a client…"}
+      placeholder={kind === "supplier" ? "Type to filter vendors…" : "Type a client…"}
       allowEmpty={Boolean(onClear)}
       emptyLabel={kind === "supplier" ? "No vendor" : "Clear"}
       emptyMessage={
-        kind === "supplier"
-          ? "No suppliers match. Add them in the Suppliers library first."
-          : "No clients match. Add them in the Clients library first."
+        kind === "supplier" ? "No vendors match." : "No clients match. Add them in the Clients library first."
       }
       aria-label={kind === "supplier" ? "Vendor" : "Client"}
       tabIndex={tabIndex}

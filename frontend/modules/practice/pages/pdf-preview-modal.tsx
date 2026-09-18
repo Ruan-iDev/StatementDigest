@@ -17,6 +17,8 @@ type Props = {
   pages: PreviewPage[];
   documentId?: number | null;
   documentIds?: number[] | null;
+  /** Ready-made PDF when this preview is not a saved quote/invoice. */
+  pdfBlob?: Blob | null;
   onClose: () => void;
 };
 
@@ -96,14 +98,22 @@ function waitForImages(doc: Document): Promise<void> {
   ).then(() => undefined);
 }
 
-export function PdfPreviewModal({ open, title, pages, documentId, documentIds, onClose }: Props) {
+export function PdfPreviewModal({
+  open,
+  title,
+  pages,
+  documentId,
+  documentIds,
+  pdfBlob,
+  onClose,
+}: Props) {
   const [busy, setBusy] = useState<"save" | "print" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const printFrameRef = useRef<HTMLIFrameElement | null>(null);
   const printUrlRef = useRef<string | null>(null);
   const printGen = useRef(0);
   const batchKey = (documentIds || []).join(",");
-  const canSave = Boolean(documentId) || (documentIds != null && documentIds.length > 0);
+  const canSave = Boolean(pdfBlob) || Boolean(documentId) || (documentIds != null && documentIds.length > 0);
 
   useEffect(() => {
     if (!open) return;
@@ -200,9 +210,10 @@ export function PdfPreviewModal({ open, title, pages, documentId, documentIds, o
     try {
       setError(null);
       const blob =
-        documentIds && documentIds.length
+        pdfBlob ||
+        (documentIds && documentIds.length
           ? await practiceApi.documents.batchPdfBlob(documentIds)
-          : await practiceApi.documents.pdfBlob(documentId as number);
+          : await practiceApi.documents.pdfBlob(documentId as number));
       await saveBlobAsPdf(blob, pdfFilename(title));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not save PDF");
@@ -295,11 +306,12 @@ export function PdfPreviewModal({ open, title, pages, documentId, documentIds, o
       if (!printed && !isDesktopApp()) {
         if (printGen.current !== gen) return;
         const blob =
-          documentIds && documentIds.length
+          pdfBlob ||
+          (documentIds && documentIds.length
             ? await practiceApi.documents.batchPdfBlob(documentIds)
             : documentId
               ? await practiceApi.documents.pdfBlob(documentId)
-              : null;
+              : null);
         if (blob) {
           if (printGen.current !== gen) return;
           printed = await printPdfBlob(blob);

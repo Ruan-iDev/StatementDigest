@@ -6,17 +6,14 @@ import {
   Building2,
   Check,
   ChevronDown,
-  Copy,
-  FolderOpen,
   HardDrive,
   ImagePlus,
   KeyRound,
   Plus,
-  ShieldCheck,
   Trash2,
   UserRound,
 } from "lucide-react";
-import { api, type LocalDataInfo, type ProfileType, type UserProfile } from "@/lib/api";
+import { api, type ProfileType, type UserProfile } from "@/lib/api";
 import { useProfile } from "@/components/profile-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,13 +25,6 @@ import { cn } from "@/lib/utils";
 import { ChangePasswordCard } from "@/components/change-password-card";
 import { useAuth } from "@/components/auth-provider";
 import { TrialBadge } from "@/components/trial-gate";
-
-function formatBytes(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n) || n < 0) return "—";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-}
 
 export default function MyProfilePage() {
   const router = useRouter();
@@ -53,9 +43,6 @@ export default function MyProfilePage() {
   const [saving, setSaving] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoBusy, setLogoBusy] = useState(false);
-  const [localData, setLocalData] = useState<LocalDataInfo | null>(null);
-  const [localDataError, setLocalDataError] = useState<string | null>(null);
-  const [openingPath, setOpeningPath] = useState(false);
   /** Profile Details card starts collapsed to reduce clutter */
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -158,49 +145,6 @@ export default function MyProfilePage() {
       });
     }
   }, [active]);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.localData
-      .get()
-      .then((info) => {
-        if (!cancelled) {
-          setLocalData(info);
-          setLocalDataError(null);
-        }
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) {
-          setLocalData(null);
-          setLocalDataError(e instanceof Error ? e.message : "Could not load local data path");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function openFileLocation(target: "data_dir" | "database" = "data_dir") {
-    setOpeningPath(true);
-    setError(null);
-    try {
-      const res = await api.localData.open(target);
-      setMessage(res.message);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Could not open file location");
-    } finally {
-      setOpeningPath(false);
-    }
-  }
-
-  async function copyPath(path: string) {
-    try {
-      await navigator.clipboard?.writeText(path);
-      setMessage("Path copied to clipboard");
-    } catch {
-      setError("Could not copy path");
-    }
-  }
 
   // Load authenticated logo preview
   useEffect(() => {
@@ -435,100 +379,17 @@ export default function MyProfilePage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <HardDrive className="h-4 w-4" />
-            Your data on this PC
+            Database
           </CardTitle>
-          <CardDescription className="flex items-start gap-2">
-            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--neon-lime))]" />
-            <span>
-              LedgerFlow stores everything locally by default. Nothing is uploaded to a cloud —
-              statements and ledgers stay on your device.
-            </span>
+          <CardDescription>
+            Location, backup and restore live under app Settings — they apply to Ledger Flow and Work
+            Flow together.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {localDataError && (
-            <p className="text-sm text-destructive">{localDataError}</p>
-          )}
-          {!localData && !localDataError && (
-            <p className="text-sm text-muted-foreground">Loading local data location…</p>
-          )}
-          {localData && (
-            <>
-              <div className="rounded-xl border border-[hsl(var(--neon-lime)/0.4)] bg-[hsl(var(--neon-lime)/0.08)] px-3 py-3 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Database file
-                  </Label>
-                  <Badge variant="secondary">
-                    {localData.database_exists ? "On this device" : "Will be created"}
-                  </Badge>
-                  {localData.database_exists && (
-                    <Badge variant="outline">{formatBytes(localData.database_size_bytes)}</Badge>
-                  )}
-                  <Badge variant="outline">
-                    {localData.is_custom_location ? "Custom location" : "Documents default"}
-                  </Badge>
-                </div>
-                <p className="break-all font-mono text-xs sm:text-sm leading-relaxed">
-                  {localData.database_path}
-                </p>
-                <p className="text-[11px] text-muted-foreground">
-                  Data folder:{" "}
-                  <span className="font-mono break-all">{localData.data_dir}</span>
-                </p>
-                {!localData.is_custom_location && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Default for every user:{" "}
-                    <span className="font-mono">Documents/LedgerFlow/Data</span>
-                    {localData.default_data_dir ? (
-                      <>
-                        {" "}
-                        (
-                        <span className="font-mono break-all">{localData.default_data_dir}</span>
-                        )
-                      </>
-                    ) : null}
-                    .
-                  </p>
-                )}
-                <p className="text-[11px] text-muted-foreground">{localData.privacy_note}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  onClick={() => void openFileLocation("data_dir")}
-                  disabled={openingPath}
-                >
-                  <FolderOpen className="mr-1.5 h-4 w-4" />
-                  {openingPath ? "Opening…" : "Open file location"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void openFileLocation("database")}
-                  disabled={openingPath}
-                >
-                  <FolderOpen className="mr-1.5 h-4 w-4" />
-                  Show database file
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void copyPath(localData.database_path)}
-                >
-                  <Copy className="mr-1 h-3.5 w-3.5" />
-                  Copy path
-                </Button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Uploaded statements are kept under{" "}
-                <span className="font-mono break-all">{localData.uploads_dir}</span>. Back up this
-                folder (or the whole data folder) if you want a copy for yourself — LedgerFlow never
-                sends it anywhere.
-              </p>
-            </>
-          )}
+        <CardContent>
+          <Button type="button" variant="outline" onClick={() => router.push("/settings/data")}>
+            Open database settings
+          </Button>
         </CardContent>
       </Card>
 

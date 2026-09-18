@@ -5,6 +5,30 @@
 
 ---
 
+## Unreleased on `main` — 2026-09-18
+
+Work Flow costing, print, traveling, and absences. **No EXE cut yet** (portable still `LedgerFlow-2.1.1-Portable.exe`).
+
+**Work Flow · Project statement**
+- Tabs: **Project Flow** and **Project Costing Sheet**
+- Costing board: invoices + payments, Monday–Sunday costs (expenses and wages), wages breakdown by role, traveling
+- Wage rows amber, expense rows blue; Total expenses / Total wages / Total project expenses
+- Absent days: explicit Absent (R0) lines, plus days short of the rest of the crew that week
+- **Print** opens the same preview as quotes/invoices (Print + Save PDF). Pages are white paper; wage/expense colours stay
+
+**Work Flow · Paper trail**
+- Traveling (ledger, km, R/litre, amount paid)
+- Absence (R0, days from the selected date) next to commission
+- Ctrl+Enter to add/save trail forms; date focused after open
+- Received payment can credit an expense ledger (e.g. director cash-advance refund)
+
+**Work Flow · Ledgers & Settings**
+- Own ledgers (copy from Ledger Flow once); Configuration Company / Quote-Invoice / Ledgers; edit name + income/expense
+- App Settings at the bottom of the sidebar — database location, backup, restore
+- Opening a project no longer shows **Not Found** when the traveling table was missing
+
+---
+
 ## v2.1.2 — 2026-09-16
 
 **Theme:** Paid invoices, batch print, and project folders.

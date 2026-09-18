@@ -15,7 +15,8 @@ export type EntryType =
   | "task"
   | "payment"
   | "meeting"
-  | "wage";
+  | "wage"
+  | "travel";
 
 export type DocumentKind = "quote" | "invoice" | "rfq";
 
@@ -93,8 +94,11 @@ export type PracticeEntry = {
   body: string | null;
   amount: string | null;
   document_id: number | null;
+  document_ids?: number[] | null;
+  ledger_id?: number | null;
   expense_id: number | null;
   wage_id?: number | null;
+  travel_id?: number | null;
   occurred_on: string | null;
   occurred_time: string | null;
   created_at: string;
@@ -110,6 +114,7 @@ export type PracticeProject = {
   started_on: string | null;
   due_on: string | null;
   summary: string | null;
+  checklist?: { id: string; text: string; done: boolean }[];
   is_archived: boolean;
   entry_count: number;
   created_at: string;
@@ -179,6 +184,21 @@ export type WorkflowReportLine = {
   amount: string;
 };
 
+export type WorkflowPLLine = {
+  ledger_id: number | null;
+  ledger_name: string;
+  amount: string;
+  count: number;
+};
+
+export type WorkflowPL = {
+  income: WorkflowPLLine[];
+  expenses: WorkflowPLLine[];
+  income_total: string;
+  expense_total: string;
+  net: string;
+};
+
 export type WorkflowReport = {
   currency: string;
   fy_start_month: number;
@@ -193,6 +213,7 @@ export type WorkflowReport = {
   expenses: WorkflowReportLine[];
   wages?: WorkflowReportLine[];
   totals: { quotes: string; invoices: string; expenses: string; net: string; payments?: string; wages?: string };
+  pl?: WorkflowPL;
 };
 
 export type AddressCard = {
@@ -347,6 +368,30 @@ export type DocumentPrepare = {
   disclaimer: string | null;
 };
 
+export type PracticeLedger = {
+  id: number;
+  name: string;
+  type: "income" | "expense" | string;
+  is_archived: boolean;
+  sort_order: number;
+  created_at: string;
+};
+
+export type PracticeTravel = {
+  id: number;
+  project_id: number;
+  staff_id: number;
+  staff_name?: string | null;
+  ledger_id: number;
+  ledger_name?: string | null;
+  km: string | number;
+  price_per_litre: string | number;
+  amount: string | number;
+  occurred_on: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
 export type PracticeExpense = {
   id: number;
   project_id: number;
@@ -377,15 +422,19 @@ export type ProjectStatement = {
   invoices: PracticeDocument[];
   expenses: PracticeExpense[];
   payments?: PracticeEntry[];
+  wages?: PracticeWage[];
+  travels?: PracticeTravel[];
   totals: {
     quotes: string;
     invoices: string;
     expenses: string;
     net: string;
     payments?: string;
+    wages?: string;
   };
   currency: string;
   has_logo?: boolean;
+  company_name?: string | null;
 };
 
 export type PartyWrite = {
@@ -414,6 +463,7 @@ export type ProjectWrite = {
   started_on?: string | null;
   due_on?: string | null;
   summary?: string | null;
+  checklist?: { id: string; text: string; done: boolean }[];
 };
 
 export type DocumentWrite = {
@@ -492,6 +542,8 @@ export type PracticeStaff = {
   bank_branch_code: string | null;
   wage_amount: string | number | null;
   wage_period: StaffWagePeriod | string;
+  default_ledger_id?: number | null;
+  default_ledger_name?: string | null;
   photo_path: string | null;
   has_photo: boolean;
   notes: string | null;
@@ -520,6 +572,7 @@ export type StaffWrite = {
   wage_amount?: number | string | null;
   wage_period?: StaffWagePeriod | string | null;
   wage_effective_on?: string | null;
+  default_ledger_id?: number | null;
   notes?: string | null;
   is_archived?: boolean;
 };
@@ -534,6 +587,10 @@ export type PracticeWage = {
   days?: string | number | null;
   rate_amount?: string | number | null;
   rate_period?: StaffWagePeriod | string | null;
+  kind?: "wage" | "commission" | "absence" | string;
+  override_reason?: string | null;
+  ledger_id?: number | null;
+  ledger_name?: string | null;
   deductions?: WageDeduction[];
   additions?: WageDeduction[];
   occurred_on: string | null;
