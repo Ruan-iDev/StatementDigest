@@ -1,21 +1,21 @@
 # App version & in-app updates
 
-> **Status (2026-09-16):** Current release **v2.1.2**. Footer version is live. **Settings → App updates is hidden** until the OTA/air-update channel is ready. Code remains in `frontend/components/app-updates-card.tsx`; re-enable from Settings when hosting is set up. Tracked in `docs/TODO.md`. Full changelog: [RELEASE_NOTES.md](./RELEASE_NOTES.md).
+> **Status (2026-09-23):** Current release **v2.1.3**. Footer version is live. **Settings → App updates is hidden** until the OTA/air-update channel is ready. Code remains in `frontend/components/app-updates-card.tsx`; re-enable from Settings when hosting is set up. Tracked in `docs/TODO.md`. Full changelog: [RELEASE_NOTES.md](./RELEASE_NOTES.md).
 
 ## Version in the UI
 
 | Where | What |
 |-------|------|
-| **Footer (right)** | `v2.1.2` — always visible for tester feedback |
+| **Footer (right)** | `v2.1.3` — always visible for tester feedback |
 | **Settings → App updates** | Same version + **Check for updates** (hidden until OTA ready) |
-| **API `/api/health`** | `"version": "2.1.2"` (or `LEDGERFLOW_APP_VERSION`) |
+| **API `/api/health`** | `"version": "2.1.3"` (or `LEDGERFLOW_APP_VERSION`) |
 
-**Source of truth:** repo root file `VERSION` (one line, e.g. `2.1.2`).
+**Source of truth:** repo root file `VERSION` (one line, e.g. `2.1.3`).
 
 Bump it **before** every tester build:
 
 ```text
-VERSION          →  2.1.2
+VERSION          →  2.1.3
 ```
 
 `scripts/build-desktop.ps1` reads `VERSION` and injects:

@@ -694,6 +694,7 @@ export function PracticeStatementPage() {
   }
 
   const currency = data.currency || "ZAR";
+  const projectName = data.project.name;
 
   async function printReport() {
     const el = printRef.current;
@@ -704,9 +705,7 @@ export function PracticeStatementPage() {
       const pages = await captureElementToPages(el);
       if (pages.length === 0) throw new Error("Nothing to print on this view.");
       const title =
-        tab === "costing"
-          ? `Costing sheet · ${data.project.name}`
-          : `Project flow · ${data.project.name}`;
+        tab === "costing" ? `Costing sheet · ${projectName}` : `Project flow · ${projectName}`;
       const pdfBlob = await pagesToPdf(pages, title);
       setPreview({ title, pages, pdfBlob });
     } catch (e: unknown) {

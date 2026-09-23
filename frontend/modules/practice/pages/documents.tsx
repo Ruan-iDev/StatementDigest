@@ -45,6 +45,7 @@ export function PracticeDocumentsPage({ kind }: Props) {
   const isInvoiceList = kind === "invoice";
   const selectedCount = selected.size;
   const allSelected = rows.length > 0 && selectedCount === rows.length;
+  const listFrom = kind === "quote" ? "/practice/quotes" : "/practice/invoices";
 
   async function load() {
     setRows(await practiceApi.documents.list(kind));
@@ -104,7 +105,7 @@ export function PracticeDocumentsPage({ kind }: Props) {
     try {
       setError(null);
       const copy = await practiceApi.documents.duplicateQuote(id);
-      router.push(documentEditorHref({ kind: "quote", id: copy.id }));
+      router.push(documentEditorHref({ kind: "quote", id: copy.id, from: listFrom }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not duplicate quote");
     } finally {
@@ -136,7 +137,7 @@ export function PracticeDocumentsPage({ kind }: Props) {
               : ` New ${kind}s get the next number and pull company + client details.`}
           </p>
         </div>
-        <Button type="button" onClick={() => router.push(documentEditorHref({ kind }))}>
+        <Button type="button" onClick={() => router.push(documentEditorHref({ kind, from: listFrom }))}>
           New {kind}
         </Button>
       </header>
@@ -165,7 +166,7 @@ export function PracticeDocumentsPage({ kind }: Props) {
                 "cursor-pointer transition-colors hover:border-[hsl(var(--neon-lime)/0.45)]",
                 isInvoiceList && selected.has(row.id) && "border-[hsl(var(--neon-magenta)/0.55)]"
               )}
-              onClick={() => router.push(documentEditorHref({ kind, id: row.id }))}
+              onClick={() => router.push(documentEditorHref({ kind, id: row.id, from: listFrom }))}
             >
               <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
                 <div className="min-w-0 space-y-0.5">
@@ -218,6 +219,7 @@ export function PracticeDocumentsPage({ kind }: Props) {
                               partyId: row.party_id,
                               projectId: row.project_id,
                               sourceQuoteId: row.id,
+                              from: "/practice/invoices",
                             })
                           )
                         }

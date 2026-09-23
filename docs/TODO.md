@@ -1,6 +1,6 @@
 # TODO — living backlog
 
-**Last updated:** 2026-09-18 · **App version: 2.1.2** (source on `main` is ahead of the tag) · last portable EXE `LedgerFlow-2.1.1-Portable.exe` (2.1.2 EXE not cut)  
+**Last updated:** 2026-09-23 · **App version: 2.1.3** · portable EXE `LedgerFlow-2.1.3-Portable.exe`  
 **How to use:** Move items between sections as work finishes. Add new items from product conversations. After any session, update **Status snapshot**.  
 **Release notes:** [RELEASE_NOTES.md](./RELEASE_NOTES.md)
 
@@ -11,8 +11,8 @@
 | Area | Status |
 |------|--------|
 | Local app run (FE + BE) | Working on **UI :3470 / API :8470** (`run.py` default **no auto-reload** — set `LEDGERFLOW_RELOAD=1` for watch mode) |
-| Portable EXE | **v2.1.1** `LedgerFlow-2.1.1-Portable.exe` — next cut should include **2.1.2 + this Work Flow slice** |
-| Work Flow · costing / print | **On main 2026-09-18** — Project Flow + Costing Sheet, wages/expense highlights, print preview (white paper), traveling, absences |
+| Portable EXE | **v2.1.3** `LedgerFlow-2.1.3-Portable.exe` — includes v2.1.2 (never cut on its own) plus the costing slice |
+| Work Flow · costing / print | **Shipped in v2.1.3** — Project Flow + Costing Sheet, wages/expense highlights, print preview (white paper), traveling, absences |
 | Soft grey + neon hub UI | Done |
 | Auth (login / guest / first-time setup) | Done v1.3 |
 | Returning-user greet + simple login | Done v1.3 |
@@ -94,7 +94,8 @@ Work only on **`feature/practice-module`**. See [MODULES.md](./MODULES.md).
 - [ ] **HR wage-increase report** — pull dated rate history (start / increase / decrease) to PDF
 - [ ] Staff statement PDF (same preview window as supplier statements)
 - [ ] Attach files to a project
-- [ ] Cut portable EXE that includes this Work Flow slice (still on `LedgerFlow-2.1.1-Portable.exe`)
+- [x] Cut portable EXE **v2.1.3** (`LedgerFlow-2.1.3-Portable.exe`) — v2.1.2 plus this Work Flow slice
+- [x] Quote, invoice, and RFQ Back returns to the list, file, project, or report that opened the document
 - [ ] Merge to `Develop---EXE-Build` only when a slice is shippable
 
 ### 5 — Cabinet Flow (new module — spec later)

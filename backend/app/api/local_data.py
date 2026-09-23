@@ -143,7 +143,7 @@ _SKIP_NAMES = {"ledgerflow.db-wal", "ledgerflow.db-shm"}
 
 
 def _app_version() -> str:
-    return (os.environ.get("LEDGERFLOW_APP_VERSION") or "2.1.2").strip() or "2.1.2"
+    return (os.environ.get("LEDGERFLOW_APP_VERSION") or "2.1.3").strip() or "2.1.3"
 
 
 def _unlink(path: str) -> None:

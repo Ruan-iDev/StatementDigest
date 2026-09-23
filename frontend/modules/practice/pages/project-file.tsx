@@ -683,6 +683,7 @@ export function PracticeProjectFilePage() {
         kind,
         partyId: kind === "rfq" ? null : project.client_id,
         projectId: project.id,
+        from: `/practice/file?id=${project.id}`,
       })
     );
   }
@@ -1548,7 +1549,13 @@ export function PracticeProjectFilePage() {
                       entry.entry_type === "invoice" ||
                       entry.entry_type === "rfq"
                     ) {
-                      router.push(documentEditorHref({ kind: entry.entry_type, id: entry.document_id }));
+                      router.push(
+                        documentEditorHref({
+                          kind: entry.entry_type,
+                          id: entry.document_id,
+                          from: `/practice/file?id=${id}`,
+                        })
+                      );
                     }
                   }}
                   onDoubleClick={() => openEdit(entry)}

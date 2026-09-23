@@ -7,7 +7,7 @@ Hours are **focused development time** for that calendar day (design + build + d
 |--------|------:|
 | **Total hours (all days)** | **~40+** (estimate across multi-session desktop product work) |
 | **Days logged** | 2+ |
-| **Last updated** | 2026-09-02 · **v2.1.0** |
+| **Last updated** | 2026-09-23 · **v2.1.3** |
 
 ---
 
@@ -21,6 +21,19 @@ Hours are **focused development time** for that calendar day (design + build + d
 ---
 
 ## Log
+
+### 2026-09-23
+
+**Hours:** release cut  
+**Who:** Solo  
+**Branch:** `main`  
+**Shipped:** **v2.1.3** `LedgerFlow-2.1.3-Portable.exe`
+
+- First portable EXE since 2.1.1 (2.1.2 was source-only)
+- Project costing sheet, traveling, absences, print preview
+- Quote / invoice / RFQ Back returns to the page that opened the document
+
+---
 
 ### 2026-09-02
 

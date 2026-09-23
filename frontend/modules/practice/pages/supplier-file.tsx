@@ -93,7 +93,13 @@ export function PracticeSupplierFilePage() {
                 <Button
                   type="button"
                   onClick={() =>
-                    router.push(documentEditorHref({ kind: "rfq", partyId: party.id }))
+                    router.push(
+                      documentEditorHref({
+                        kind: "rfq",
+                        partyId: party.id,
+                        from: `/practice/suppliers/file?id=${party.id}`,
+                      })
+                    )
                   }
                 >
                   <Plus className="mr-1 h-4 w-4" />
@@ -163,7 +169,15 @@ export function PracticeSupplierFilePage() {
                 key={row.id}
                 type="button"
                 className="flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-transparent px-1 py-2 text-left text-sm hover:border-[hsl(var(--neon-violet)/0.45)]"
-                onClick={() => router.push(documentEditorHref({ kind: "rfq", id: row.id }))}
+                onClick={() =>
+                  router.push(
+                    documentEditorHref({
+                      kind: "rfq",
+                      id: row.id,
+                      from: `/practice/suppliers/file?id=${id}`,
+                    })
+                  )
+                }
               >
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-2">

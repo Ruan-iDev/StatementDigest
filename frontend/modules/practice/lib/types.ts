@@ -642,12 +642,21 @@ export type ProductWrite = {
   is_archived?: boolean;
 };
 
+export function safePracticeReturn(href: string | null | undefined): string | null {
+  if (!href) return null;
+  const trimmed = href.trim();
+  if (!trimmed.startsWith("/practice/")) return null;
+  if (trimmed.startsWith("//") || trimmed.includes("://") || trimmed.includes("\\")) return null;
+  return trimmed;
+}
+
 export function documentEditorHref(opts: {
   kind: DocumentKind;
   id?: number;
   partyId?: number | null;
   projectId?: number | null;
   sourceQuoteId?: number | null;
+  from?: string | null;
 }): string {
   const q = new URLSearchParams();
   q.set("kind", opts.kind);
@@ -655,5 +664,7 @@ export function documentEditorHref(opts: {
   if (opts.partyId) q.set("party_id", String(opts.partyId));
   if (opts.projectId) q.set("project_id", String(opts.projectId));
   if (opts.sourceQuoteId) q.set("source_quote_id", String(opts.sourceQuoteId));
+  const from = safePracticeReturn(opts.from);
+  if (from) q.set("from", from);
   return `/practice/document?${q.toString()}`;
 }

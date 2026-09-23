@@ -271,7 +271,7 @@ export function PracticeReportsPage() {
                 rows={data.quotes}
                 currency={currency}
                 empty="No quotes in this year."
-                hrefFor={(row) => documentEditorHref({ kind: "quote", id: row.id })}
+                hrefFor={(row) => documentEditorHref({ kind: "quote", id: row.id, from: "/practice/reports" })}
               />
             </CardContent>
           </Card>
@@ -286,7 +286,7 @@ export function PracticeReportsPage() {
                 rows={data.invoices}
                 currency={currency}
                 empty="No invoices in this year."
-                hrefFor={(row) => documentEditorHref({ kind: "invoice", id: row.id })}
+                hrefFor={(row) => documentEditorHref({ kind: "invoice", id: row.id, from: "/practice/reports" })}
               />
             </CardContent>
           </Card>

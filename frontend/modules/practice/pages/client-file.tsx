@@ -151,7 +151,7 @@ export function PracticeClientFilePage() {
     try {
       setError(null);
       const copy = await practiceApi.documents.duplicateQuote(quoteId);
-      router.push(documentEditorHref({ kind: "quote", id: copy.id }));
+      router.push(documentEditorHref({ kind: "quote", id: copy.id, from: clientFileHref(id, "quotes") }));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not duplicate quote");
     } finally {
@@ -217,6 +217,7 @@ export function PracticeClientFilePage() {
         partyId: row.party_id,
         projectId: row.project_id,
         sourceQuoteId: row.id,
+        from: clientFileHref(id, "invoices"),
       })
     );
   }
@@ -391,7 +392,9 @@ export function PracticeClientFilePage() {
             <Button
               type="button"
               size="sm"
-              onClick={() => router.push(documentEditorHref({ kind: "quote", partyId: client.id }))}
+              onClick={() =>
+                router.push(documentEditorHref({ kind: "quote", partyId: client.id, from: clientFileHref(id, "quotes") }))
+              }
             >
               <Plus className="mr-1 h-4 w-4" />
               New quote
@@ -404,8 +407,12 @@ export function PracticeClientFilePage() {
               <Card
                 key={row.id}
                 className="cursor-pointer transition-colors hover:border-[hsl(var(--neon-lime)/0.45)]"
-                onClick={() => router.push(documentEditorHref({ kind: "quote", id: row.id }))}
-                onDoubleClick={() => router.push(documentEditorHref({ kind: "quote", id: row.id }))}
+                onClick={() =>
+                  router.push(documentEditorHref({ kind: "quote", id: row.id, from: clientFileHref(id, "quotes") }))
+                }
+                onDoubleClick={() =>
+                  router.push(documentEditorHref({ kind: "quote", id: row.id, from: clientFileHref(id, "quotes") }))
+                }
               >
                 <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
                   <div className="min-w-0 space-y-0.5">
@@ -480,7 +487,11 @@ export function PracticeClientFilePage() {
               type="button"
               size="sm"
               className="ml-auto"
-              onClick={() => router.push(documentEditorHref({ kind: "invoice", partyId: client.id }))}
+              onClick={() =>
+                router.push(
+                  documentEditorHref({ kind: "invoice", partyId: client.id, from: clientFileHref(id, "invoices") })
+                )
+              }
             >
               <Plus className="mr-1 h-4 w-4" />
               New invoice
@@ -496,8 +507,12 @@ export function PracticeClientFilePage() {
                   "cursor-pointer transition-colors hover:border-[hsl(var(--neon-magenta)/0.45)]",
                   selectedInvoices.has(row.id) && "border-[hsl(var(--neon-magenta)/0.55)]"
                 )}
-                onClick={() => router.push(documentEditorHref({ kind: "invoice", id: row.id }))}
-                onDoubleClick={() => router.push(documentEditorHref({ kind: "invoice", id: row.id }))}
+                onClick={() =>
+                  router.push(documentEditorHref({ kind: "invoice", id: row.id, from: clientFileHref(id, "invoices") }))
+                }
+                onDoubleClick={() =>
+                  router.push(documentEditorHref({ kind: "invoice", id: row.id, from: clientFileHref(id, "invoices") }))
+                }
               >
                 <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
                   <div className="min-w-0 space-y-0.5">

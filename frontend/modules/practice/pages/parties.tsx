@@ -171,7 +171,9 @@ export function PracticePartiesPage({ kind }: Props) {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => router.push(documentEditorHref({ kind: "quote", partyId: row.id }))}
+                      onClick={() =>
+                        router.push(documentEditorHref({ kind: "quote", partyId: row.id, from: "/practice/clients" }))
+                      }
                     >
                       Quote
                     </Button>
@@ -181,7 +183,9 @@ export function PracticePartiesPage({ kind }: Props) {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => router.push(documentEditorHref({ kind: "invoice", partyId: row.id }))}
+                      onClick={() =>
+                        router.push(documentEditorHref({ kind: "invoice", partyId: row.id, from: "/practice/clients" }))
+                      }
                     >
                       Invoice
                     </Button>
@@ -192,7 +196,9 @@ export function PracticePartiesPage({ kind }: Props) {
                       size="sm"
                       variant="outline"
                       title={RFQ_EXPANSION}
-                      onClick={() => router.push(documentEditorHref({ kind: "rfq", partyId: row.id }))}
+                      onClick={() =>
+                        router.push(documentEditorHref({ kind: "rfq", partyId: row.id, from: "/practice/suppliers" }))
+                      }
                     >
                       RFQ
                       <span className="ml-1 text-[10px] font-normal text-muted-foreground">

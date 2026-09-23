@@ -18,10 +18,12 @@ import { ClientPicker, partyToCard, tradingAsLine } from "@/modules/practice/pag
 import { ProductItemField } from "@/modules/practice/pages/product-item-field";
 import { PdfPreviewModal, type PreviewPage } from "@/modules/practice/pages/pdf-preview-modal";
 import {
+  documentEditorHref,
   documentKindLabel,
   parseDocumentKind,
   RFQ_EXPANSION,
   documentStatusLabel,
+  safePracticeReturn,
   type AddressCard,
   type BankSnapshot,
   type DocumentLine,
@@ -565,6 +567,8 @@ export function PracticeDocumentEditorPage() {
   }, [dirty]);
 
   function backHref(): string {
+    const from = safePracticeReturn(search.get("from"));
+    if (from) return from;
     if (projectId) return `/practice/file?id=${projectId}`;
     if (isRfq && partyId) return `/practice/suppliers/file?id=${partyId}`;
     if (partyId) return `/practice/clients/file?id=${partyId}&tab=${kind === "quote" ? "quotes" : "invoices"}`;
@@ -668,8 +672,7 @@ export function PracticeDocumentEditorPage() {
   }
 
   function documentHref(id: number) {
-    const q = new URLSearchParams({ kind, id: String(id) });
-    return `/practice/document?${q}`;
+    return documentEditorHref({ kind, id, from: search.get("from") });
   }
 
   async function duplicateQuote() {

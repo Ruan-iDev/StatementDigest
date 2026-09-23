@@ -23,8 +23,8 @@ Tester does **not** need these.
 
 ## Version
 
-Edit root **`VERSION`** (currently `2.1.0`) before building. Footer + Settings + portable filename use that value.  
-Tester file: `desktop/dist/LedgerFlow-2.1.0-Portable.exe`  
+Edit root **`VERSION`** (currently `2.1.3`) before building. Footer + Settings + portable filename use that value.  
+Tester file: `desktop/dist/LedgerFlow-2.1.3-Portable.exe`  
 In-app updates: see [UPDATES.md](./UPDATES.md).
 
 ## One-command build

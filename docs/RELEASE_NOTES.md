@@ -5,9 +5,11 @@
 
 ---
 
-## Unreleased on `main` — 2026-09-18
+## v2.1.3 — 2026-09-23
 
-Work Flow costing, print, traveling, and absences. **No EXE cut yet** (portable still `LedgerFlow-2.1.1-Portable.exe`).
+**Theme:** Project costing in the portable EXE, and Back returns you to the page that opened the document.
+
+First portable build since **v2.1.1**. v2.1.2 (paid invoices, batch print, yellow project folders) was never cut as its own EXE, so this file includes that work as well.
 
 **Work Flow · Project statement**
 - Tabs: **Project Flow** and **Project Costing Sheet**
@@ -26,6 +28,15 @@ Work Flow costing, print, traveling, and absences. **No EXE cut yet** (portable 
 - Own ledgers (copy from Ledger Flow once); Configuration Company / Quote-Invoice / Ledgers; edit name + income/expense
 - App Settings at the bottom of the sidebar — database location, backup, restore
 - Opening a project no longer shows **Not Found** when the traveling table was missing
+
+**Work Flow · Documents**
+- Back on a quote, invoice, or RFQ returns to the list, client file, supplier file, project, or report you opened it from
+
+### Upgrade notes
+- Close `LedgerFlow-2.1.1-Portable.exe`, run `LedgerFlow-2.1.3-Portable.exe`
+- Dev: `npm run dev` (UI :3470 / API :8470)
+- First launch of this build creates the traveling table if it is missing
+- Data path unchanged: `Documents\LedgerFlow\Data`
 
 ---
 
@@ -47,7 +58,7 @@ Work Flow costing, print, traveling, and absences. **No EXE cut yet** (portable 
 - Sidebar tile + `/cabinet` coming-soon hub only (brief still to come)
 
 ### Upgrade notes
-- Close `LedgerFlow-2.1.1-Portable.exe`, run `LedgerFlow-2.1.2-Portable.exe` when that EXE is cut
+- v2.1.2 was not cut as its own EXE. Testers move from `LedgerFlow-2.1.1-Portable.exe` to `LedgerFlow-2.1.3-Portable.exe`
 - Dev: `npm run dev` (UI :3470 / API :8470)
 
 ---

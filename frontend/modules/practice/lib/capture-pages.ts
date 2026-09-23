@@ -5,9 +5,9 @@ import type { PreviewPage } from "@/modules/practice/pages/pdf-preview-modal";
 const A4_RATIO = 297 / 210;
 const SCALE = 2;
 
-function concatBytes(chunks: Uint8Array[]): Uint8Array {
+function concatBytes(chunks: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const total = chunks.reduce((s, c) => s + c.length, 0);
-  const out = new Uint8Array(total);
+  const out = new Uint8Array(new ArrayBuffer(total));
   let offset = 0;
   for (const chunk of chunks) {
     out.set(chunk, offset);

@@ -21,11 +21,11 @@ If a chat/session drops, start here and continue from `TODO.md` + root `devlog.m
 | [DISCLAIMER_AND_LIABILITY.md](./DISCLAIMER_AND_LIABILITY.md) | Upload Accept gate + acceptance audit | Disclaimer / legal UX |
 | [../devlog.md](../devlog.md) | Daily hours + session narrative | End of each work day |
 
-**Last documentation pass:** 2026-09-02 · **shipped app v2.1.0**
+**Last documentation pass:** 2026-09-23 · **shipped app v2.1.3**
 
 ## Quick resume (next session)
 
-1. Read **[RELEASE_NOTES.md](./RELEASE_NOTES.md)** (v2.1.0 portable EXE)  
+1. Read **[RELEASE_NOTES.md](./RELEASE_NOTES.md)** (v2.1.3 portable EXE)  
 2. Read **Next phase** in [TODO.md](./TODO.md)  
 3. **(1)** Capture Discovery Personal multi-statement data  
 4. **(2)** Calibrate Reporting against real numbers  

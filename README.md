@@ -22,7 +22,7 @@ When a chat or session drops, **continue from these files** — they are the sou
 
 ### Current release
 
-**v2.1.0** portable Windows EXE (`desktop/dist/LedgerFlow-2.1.0-Portable.exe`) — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md).
+**v2.1.3** portable Windows EXE (`desktop/dist/LedgerFlow-2.1.3-Portable.exe`) — see [docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md).
 
 ### Next phase (after v1.4.0)
 
