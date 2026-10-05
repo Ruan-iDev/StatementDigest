@@ -1,0 +1,38 @@
+# Isolated bot / parser-accuracy test stack.
+# Separate named volume + ports so it never collides with the normal stack
+# (:8470 / :3470, ./data) or the user's Documents/LedgerFlow DB.
+#
+#   docker compose -f docker-compose.bot.yml -p ledgerflow-bot up
+#
+# Bot corpus PDFs (samples/bot-corpus/, gitignored) are mounted read-only.
+services:
+  backend-bot:
+    build: ./backend
+    ports:
+      - "8471:8471"
+    environment:
+      - LEDGERFLOW_DATA=/data
+      - LEDGERFLOW_PORT=8471
+      - 'LEDGERFLOW_CORS_ORIGINS=["http://localhost:3471","http://127.0.0.1:3471"]'
+    volumes:
+      - ledgerflow-bot-data:/data
+      - ./backend:/app
+      - ./samples/bot-corpus:/corpus:ro
+    working_dir: /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8471
+
+  frontend-bot:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3471:3471"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8471/api
+    command: sh -c "npm install && npx next dev -p 3471"
+    depends_on:
+      - backend-bot
+
+volumes:
+  ledgerflow-bot-data:

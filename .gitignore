@@ -35,3 +35,6 @@ Thumbs.db
 
 # Local update channel URL (may contain private host) — keep example only
 updates/channel.url
+
+# Bot test corpus — personal statements, never commit
+samples/bot-corpus/
