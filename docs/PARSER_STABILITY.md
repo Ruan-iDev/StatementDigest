@@ -1,6 +1,6 @@
 # Locking down statement parsing (stability)
 
-**Last updated:** 2026-07-31 (end of day)  
+**Last updated:** 2026-10-05 (bot corpus accuracy pass)  
 
 **Context (human verification):**  
 - **Discovery Personal** — user-tested **226 transactions**, **100% accurate**. Locked.  
@@ -67,6 +67,7 @@ If a change would touch a **locked** module, stop and ask: *Is this a proven reg
 |--------|--------|-------|
 | **Gold Business (English)** | ✅ LOCKED | Human: **1000+ txs · 100% accurate** (2026-07-31). Lines like `26 May … 21,845.00Cr`. Image-only fee lines keep `#Monthly Account Fee` / `#Service Fees`. Regression: `test_fnb_business_text_parser_amounts_and_year`, `test_fnb_gold_zero_amount_accrued_charge_is_not_income` |
 | **Fusion Private Wealth (Afrikaans personal)** | ✅ Edition-1 sample | `25Okt … 42,000.00Kt` · Kt=krediet in, bare=debit. Regression: `test_fnb_fusion_afrikaans_personal_text_parser` |
+| **Personal Loan (English)** | ✅ Bot corpus (2/2 reconcile) | `25Mar2021 Interest 1 945.41 95 008.70Dr` · one amount column, sign from Dr/Cr balance chain (Dr = owed, negative). Regression: `test_fnb_personal_loan_layout_sign_from_balance` |
 
 - Module: `fnb_pdf.py` only (additive layouts; Gold Business rules stay locked)  
 - Auto-select: orchestrator keeps the layout with more recovered lines  
@@ -99,6 +100,56 @@ If a change would touch a **locked** module, stop and ask: *Is this a proven reg
 - Scope: **Nedbank personal current-account PDF text** (business layouts need new fixtures)  
 - **Pending:** bulk multi-statement import accuracy pass  
 - **Do not taint** when fixing other banks  
+
+---
+
+## Bot corpus accuracy pass (2026-10-05)
+
+Private corpus: `samples/bot-corpus/` (**gitignored**, real statements — never commit).
+Harness: `backend/reconcile_corpus.py` + `backend/tests/test_corpus_reconcile.py`
+(one test per PDF, skipped when the corpus is absent). Each PDF is parsed by its
+own island only and must satisfy opening + sum(txs) = closing (± R0.01), an
+unbroken running-balance chain (FNB), and dates inside the statement period.
+Run against an isolated data dir — see [BOT_TEST_SERVER.md](./BOT_TEST_SERVER.md).
+
+**Result after fixes: 173 / 173 statements reconcile.**
+
+| Bank / product | Statements | Transactions | Before | After |
+|----------------|-----------:|-------------:|-------:|------:|
+| Discovery Personal | 49 | 4 085 | 47/49 | **49/49** |
+| FNB Gold Business | 27 | 1 513 | 6/27 | **27/27** |
+| FNB Easy Account | 29 | 553 | 2/29 | **29/29** |
+| FNB Gold Cheque | 23 | 1 388 | 0/23 | **23/23** |
+| FNB Money Maximiser | 4 | 321 | 0/4 | **4/4** |
+| FNB Personal Loan | 2 | 13 | 0/2 | **2/2** |
+| FNB Private Wealth | 38 | 5 127 | 2/38 | **38/38** |
+| FNB Savings | 1 | 68 | 0/1 | **1/1** |
+
+("Before" counts include the date-in-period check: most FNB failures were
+transactions dated in the wrong year, not wrong amounts.)
+
+Proven regressions fixed (each pinned by a synthetic golden test; all
+pre-existing locked expectations unchanged):
+
+| Module | Regression (same bank, 2+ statements) | Fix | Test |
+|--------|----------------------------------------|-----|------|
+| `discovery_pdf.py` | From Aug 2026 Discovery prints comma thousands (`R1,613.50`); those lines were dropped | `AMOUNT_RE` gains an additive comma-grouped alternative; space-grouped rule unchanged | `test_discovery_space_and_comma_thousands_amounts` |
+| `fnb_pdf.py` | Period regex only knew 3-letter months → most statements dated in **today's year** (2026) | Full month names, optional spaces (`StatementPeriod:15March2021to 14April2021`) | `test_fnb_full_month_period_sets_year_and_crosses_year_end` |
+| `fnb_pdf.py` | Dec→Jan / quarterly periods put January lines in the start year | Year per line from the statement period (`_year_for_month`) | same |
+| `fnb_pdf.py` | Bare balances (overdrawn) stored as positive | Bare balance = debit (negative); Cr/Kt positive | same |
+| `fnb_pdf.py` | `Edo Collection Attempt … 1,661.98Cr` with unchanged balance counted as money (all 39 such lines, 20+ statements) | Post-pass drops lines whose balance does not move | `test_fnb_edo_collection_attempt_memo_does_not_post` |
+| `fnb_pdf.py` | PDF containing "Computer Generated Copy" + identical original → every tx doubled | Repeated `Page 1 of N` with same period/text is skipped | `test_fnb_duplicate_statement_copy_in_one_pdf_is_dropped` |
+| `fnb_pdf.py` | Personal Loan statements: 0 transactions | New additive layout `parse_fnb_personal_loan_text` | `test_fnb_personal_loan_layout_sign_from_balance` |
+| `fnb_pdf.py` | `16Mar` (no space) Savings / Private Wealth dates fell back to today's year | Covered by the period fix (Fusion layout already matched `16Mar`) | `test_fnb_no_space_dates_and_compact_period` |
+
+Known, intentionally unchanged: English Private Wealth / Savings statements use
+`16Mar` dates and are parsed by the Fusion layout, which keeps R0.00 lines that
+have a description (e.g. "Notification - Email Email Sending Fee … 0.00 …
+0.95" — the 0.95 is the accrued-charges memo column). They post R0.00 so
+reconciliation is unaffected; Gold Business continues to skip R0.00 lines.
+Discovery multi-line transfer descriptions ("Inter account transfer from
+account…" printed above the dated line) are a description-only quirk; amounts
+are correct.
 
 ---
 
@@ -197,6 +248,8 @@ That habit, plus golden tests, is how edition-1 accuracy stays locked.
 cd backend
 .\.venv\Scripts\Activate.ps1
 python -m pytest tests/test_parser_regression.py -q
+# with the private corpus present (samples/bot-corpus/):
+python reconcile_corpus.py
 ```
 
 If pytest is not installed: `pip install pytest` (or add to requirements when convenient).

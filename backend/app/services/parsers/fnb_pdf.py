@@ -11,6 +11,14 @@ Layouts currently supported:
      `26 May … 21,845.00Cr 21,845.00Cr`  · bare amount = debit
   2) **Fusion Private Wealth (Afrikaans personal)** — edition-1 sample path
      `25Okt … 42,000.00Kt 41,278.48Kt`  · Kt = krediet (in), bare = debit, Dt = debit bal
+  3) **Personal Loan (English)** — bot-corpus path (2026-10)
+     `25Mar2021 Interest 1 945.41 95 008.70Dr` · sign from the Dr/Cr balance chain
+
+Shared FNB-only helpers (2026-10 bot-corpus pass, see docs/PARSER_STABILITY.md):
+  - statement period → per-line year (full month names, year-crossing periods)
+  - bare balance = debit (overdrawn); Cr/Kt = credit
+  - duplicate printed copy of one statement inside a PDF is skipped
+  - lines that do not move the running balance (Edo Collection Attempt memos) are dropped
 
 When the user picks brand **FNB**, we try each calibrated layout and keep the best
 non-empty result (does not replace older layouts).
@@ -91,15 +99,28 @@ def _gold_image_fee_description(amount: Decimal) -> str:
 
 
 _PERIOD_RE_GOLD = re.compile(
-    r"Statement\s+Period\s*:?\s*"
-    r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})"
+    r"Statement\s*Period\s*:?\s*"
+    r"(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{4})"
     r"\s*to\s*"
-    r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})",
+    r"(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{4})",
+    re.IGNORECASE,
+)
+# 2026-10 bot-corpus fix: the original pattern only matched 3-letter months
+# ("26 May 2022"); FNB prints full names ("31 May 2022 to30 June 2022",
+# "StatementPeriod:15March2021to 14April2021"), so most statements fell back
+# to date.today().year. Full month names + optional spaces now match.
+
+_STMT_DATE_RE_GOLD = re.compile(
+    r"Statement\s*Date\s*:?\s*(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{4})",
     re.IGNORECASE,
 )
 
-_STMT_DATE_RE_GOLD = re.compile(
-    r"Statement\s+Date\s*:?\s*(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})",
+# Personal Loan: "Personal Loan Transaction History from14 March 2021 to17 April 2021"
+_PERIOD_RE_LOAN = re.compile(
+    r"Transaction\s*History\s*from\s*"
+    r"(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{4})"
+    r"\s*to\s*"
+    r"(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{4})",
     re.IGNORECASE,
 )
 
@@ -156,6 +177,11 @@ FNB_LAYOUTS: list[dict[str, str]] = [
         "label": "Fusion Private Wealth (Afrikaans personal)",
         "status": "edition-1",
     },
+    {
+        "id": "personal_loan_en",
+        "label": "Personal Loan (English)",
+        "status": "bot-corpus",
+    },
 ]
 
 
@@ -193,6 +219,45 @@ def looks_like_fnb_text(text: str) -> bool:
     return False
 
 
+_PAGE_ONE_RE = re.compile(r"\bPage\s*1\s*of\s*\d+", re.IGNORECASE)
+
+
+def _page_signature(page_text: str) -> str:
+    """Page text without digits/whitespace — ignores print-run counters."""
+    return re.sub(r"[\d\s]+", "", page_text or "")
+
+
+def _drop_duplicate_copies(pages: list[str]) -> list[str]:
+    """Drop a second printed copy of the same statement inside one PDF.
+
+    Seen in the bot corpus: a Gold Business PDF holding the "Computer Generated
+    Copy" page followed by an identical original (Page 1 of 1 twice, same
+    period, only print counters differ) — every transaction was counted twice.
+    A repeated "Page 1 of N" whose statement period (or whole page text) matches
+    the first copy starts a duplicate run; pages are skipped until a Page 1 for
+    a different statement appears.
+    """
+    first_period: Optional[str] = None
+    first_sig: Optional[str] = None
+    seen_page_one = False
+    skipping = False
+    kept: list[str] = []
+    for text in pages:
+        if _PAGE_ONE_RE.search(text or ""):
+            per = _statement_period(text)
+            per_key = f"{per[0]}..{per[1]}" if per else None
+            sig = _page_signature(text)
+            if not seen_page_one:
+                seen_page_one = True
+                first_period, first_sig = per_key, sig
+                skipping = False
+            else:
+                skipping = (per_key is not None and per_key == first_period) or sig == first_sig
+        if not skipping:
+            kept.append(text)
+    return kept
+
+
 def _extract_text(content: bytes) -> str:
     import pdfplumber
 
@@ -200,7 +265,7 @@ def _extract_text(content: bytes) -> str:
     with pdfplumber.open(io.BytesIO(content)) as pdf:
         for page in pdf.pages:
             parts.append(page.extract_text() or "")
-    return "\n".join(parts)
+    return "\n".join(_drop_duplicate_copies(parts))
 
 
 def _mon(name: str) -> int:
@@ -212,6 +277,36 @@ def _mon(name: str) -> int:
 
 def _parse_day_mon(day: str, mon: str, year: int) -> date:
     return date(year, _mon(mon), int(day))
+
+
+def _statement_period(text: str) -> Optional[tuple[date, date]]:
+    """Statement period (start, end) from English / Afrikaans / loan headers."""
+    for rx in (_PERIOD_RE_GOLD, _PERIOD_RE_AF, _PERIOD_RE_LOAN):
+        m = rx.search(text or "")
+        if not m:
+            continue
+        try:
+            start = date(int(m.group(3)), _mon(m.group(2)), int(m.group(1)))
+            end = date(int(m.group(6)), _mon(m.group(5)), int(m.group(4)))
+        except ValueError:
+            continue
+        return start, end
+    return None
+
+
+def _year_for_month(month: int, period: Optional[tuple[date, date]], fallback: int) -> int:
+    """Pick the year for a day+month line using the statement period.
+
+    Periods that cross a year end (26 Dec 2022 → 25 Jan 2023, or quarterly
+    Oct → Jan) put months >= the start month in the start year, the rest in
+    the end year. Without a period, use the fallback year.
+    """
+    if not period:
+        return fallback
+    start, end = period
+    if start.year == end.year:
+        return start.year
+    return start.year if month >= start.month else end.year
 
 
 def _statement_year_gold(text: str) -> Optional[int]:
@@ -243,15 +338,20 @@ def _statement_year_fusion_af(text: str) -> Optional[int]:
 
 
 def _balance_from_suffix(bal_raw: str) -> Optional[Decimal]:
-    """Absolute balance; Cr/Kt = credit side, Dr/Dt = debit side magnitude."""
+    """Signed balance: Cr/Kt = credit (positive); Dr/Dt or bare = debit (negative).
+
+    FNB marks credit balances with Cr/Kt and prints overdrawn balances bare
+    (proven on overdrawn Gold Cheque / Private Wealth statements in the bot
+    corpus: the running balance chain only closes when bare = debit).
+    """
     if not bal_raw:
         return None
     try:
-        if re.search(r"(?i)(cr|kt)\.?", bal_raw):
-            return abs(to_decimal(re.sub(r"(?i)(cr|kt)\.?", "", bal_raw)))
-        if re.search(r"(?i)(dr|dt)\.?", bal_raw):
-            return -abs(to_decimal(re.sub(r"(?i)(dr|dt)\.?", "", bal_raw)))
-        return abs(to_decimal(bal_raw))
+        if re.search(r"(?i)(cr|kt)\.?$", bal_raw):
+            return abs(to_decimal(re.sub(r"(?i)(cr|kt)\.?$", "", bal_raw)))
+        if re.search(r"(?i)(dr|dt)\.?$", bal_raw):
+            return -abs(to_decimal(re.sub(r"(?i)(dr|dt)\.?$", "", bal_raw)))
+        return -abs(to_decimal(bal_raw))
     except (ValueError, TypeError):
         return None
 
@@ -264,6 +364,7 @@ def parse_fnb_gold_business_text(
     cal = dict(calibration or {})
     cal.setdefault("exclude_balance_rows", True)
     year = _statement_year_gold(text) or date.today().year
+    period = _statement_period(text)
     style = cal.get("amount_style") or "credit_suffix_cr"
 
     txs: list[ParsedTransaction] = []
@@ -309,7 +410,7 @@ def parse_fnb_gold_business_text(
             continue
 
         try:
-            tx_date = _parse_day_mon(day, mon, year)
+            tx_date = _parse_day_mon(day, mon, _year_for_month(_mon(mon), period, year))
             amount = apply_amount_style(amt_raw, style)
             balance = _balance_from_suffix(bal_raw or "")
         except (ValueError, TypeError):
@@ -361,6 +462,7 @@ def parse_fnb_fusion_af_text(
     cal["balance_row_markers"] = markers
 
     year = _statement_year_fusion_af(text) or _statement_year_gold(text) or date.today().year
+    period = _statement_period(text)
     style = "credit_suffix_cr"  # Kt = in, bare = out (same convention as Cr)
 
     txs: list[ParsedTransaction] = []
@@ -396,7 +498,9 @@ def parse_fnb_fusion_af_text(
             continue
 
         try:
-            tx_date = _parse_day_mon(m.group("day"), m.group("mon"), year)
+            tx_date = _parse_day_mon(
+                m.group("day"), m.group("mon"), _year_for_month(_mon(m.group("mon")), period, year)
+            )
             amount = apply_amount_style(m.group("amount"), style)
             balance = _balance_from_suffix(m.group("balance") or "")
         except (ValueError, TypeError):
@@ -418,6 +522,124 @@ def parse_fnb_fusion_af_text(
     return txs
 
 
+# ── Layout 3: Personal Loan (English) ──────────────────────────────────────
+# 14Mar2021 Opening Balance 93 063.29Dr
+# 25Mar2021 Interest 1 945.41 95 008.70Dr
+# 20Apr2021 Transfer - Loan Credit 93 763.56 2 652.82Cr
+# 22Apr2021 Rate Change 1 768.54Cr          ← balance only (no posting) → skipped
+# Debits / Credits share one text position; direction comes from the balance.
+_LOAN_AMT = r"\d{1,3}(?:[ ,]\d{3})*\.\d{2}"
+_TX_LINE_LOAN = re.compile(
+    r"^(?P<day>\d{1,2})\s*(?P<mon>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(?P<year>\d{4})\s+"
+    r"(?P<desc>.+?)\s+"
+    r"(?P<amount>" + _LOAN_AMT + r")\s+"
+    r"(?P<balance>" + _LOAN_AMT + r"(?:Cr|Dr)?)\s*$",
+    re.IGNORECASE,
+)
+_LOAN_BAL_ONLY = re.compile(
+    r"^(?P<day>\d{1,2})\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{4}\s+"
+    r"(?P<desc>.+?)\s+(?P<balance>" + _LOAN_AMT + r"(?:Cr|Dr)?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def parse_fnb_personal_loan_text(
+    text: str,
+    calibration: Optional[dict[str, Any]] = None,
+) -> list[ParsedTransaction]:
+    """Parse FNB Personal Loan statement text (Transaction History table).
+
+    Balance Dr = owed (negative). Interest / fees / premiums push the balance
+    further into Dr (negative amount); repayments / credits move it toward Cr
+    (positive amount). Sign is taken from the running balance.
+    """
+    if "personal loan" not in (text or "").lower():
+        return []
+    txs: list[ParsedTransaction] = []
+    prev: Optional[Decimal] = None
+    for raw in (text or "").splitlines():
+        line = re.sub(r"\s+", " ", (raw or "").strip())
+        if not line:
+            continue
+        m = _TX_LINE_LOAN.match(line)
+        if not m:
+            b = _LOAN_BAL_ONLY.match(line)
+            if b:
+                # Opening / closing / status rows carry a balance only.
+                prev = _balance_from_suffix(b.group("balance").replace(" ", ""))
+            continue
+        desc = m.group("desc").strip()
+        if desc.lower() in ("opening balance", "closing balance"):
+            prev = _balance_from_suffix(m.group("balance").replace(" ", ""))
+            continue
+        try:
+            tx_date = date(int(m.group("year")), _mon(m.group("mon")), int(m.group("day")))
+            amt = abs(to_decimal(m.group("amount").replace(" ", "")))
+            balance = _balance_from_suffix(m.group("balance").replace(" ", ""))
+        except (ValueError, TypeError):
+            continue
+        if balance is None:
+            continue
+        if prev is not None and abs(abs(balance - prev) - amt) <= Decimal("0.005"):
+            amount = balance - prev
+        else:
+            amount = -amt  # unknown direction: loan charges are the common case
+        prev = balance
+        if amount == 0:
+            continue
+        txs.append(
+            ParsedTransaction(date=tx_date, description=desc, amount=amount, balance=balance, reference=None)
+        )
+    return txs
+
+
+# ── Shared FNB post-pass: running-balance check (FNB island only) ───────────
+_OPENING_RE_FNB = re.compile(
+    r"(?:Opening\s*Balance|Openingsaldo)\s*:?\s*R?\s?(\d{1,3}(?:,\d{3})*\.\d{2}(?:Cr|Dr|Kt|Dt)?)",
+    re.IGNORECASE,
+)
+_CENT = Decimal("0.005")
+
+
+def _opening_balance(text: str) -> Optional[Decimal]:
+    m = _OPENING_RE_FNB.search(text or "")
+    if not m:
+        return None
+    raw = m.group(1)
+    # Summary prints "0.00" bare for a zero opening; bare non-zero = debit.
+    return _balance_from_suffix(raw)
+
+
+def _drop_non_posting_lines(
+    txs: list[ParsedTransaction],
+    opening: Optional[Decimal],
+) -> list[ParsedTransaction]:
+    """Remove FNB lines that print an amount but do not move the balance.
+
+    Proven in the bot corpus (Private Wealth, Gold Cheque, Easy Account):
+      01 Mar Edo Collection Attempt Ct Finance1000000000 1,661.98Cr 9,703.86Cr
+    sits between two rows with the same 9,703.86Cr balance — the collection
+    attempt is a memo, not a posting. Keeping it broke opening + sum = closing
+    on 20+ statements. A row is dropped only when the previous row is itself
+    chain-consistent (or is the opening balance) and the balance is unchanged.
+    """
+    if not txs:
+        return txs
+    out: list[ParsedTransaction] = []
+    prev = opening
+    for t in txs:
+        if t.balance is None:
+            out.append(t)
+            prev = None
+            continue
+        if prev is not None and t.amount != 0 and abs(t.balance - prev) <= _CENT:
+            # Non-posting memo line — balance unchanged.
+            continue
+        out.append(t)
+        prev = t.balance
+    return out
+
+
 def parse_fnb_statement_text(
     text: str,
     calibration: Optional[dict[str, Any]] = None,
@@ -425,25 +647,32 @@ def parse_fnb_statement_text(
     """Parse FNB PDF plain text — try all calibrated layouts, keep the best.
 
     Gold Business is tried first (locked path). If another layout yields more
-    transactions (e.g. Afrikaans Fusion personal), that result is used.
+    transactions (e.g. Afrikaans Fusion personal, Personal Loan), that result
+    is used. Afterwards lines that do not move the running balance (FNB
+    "Edo Collection Attempt" memos) are dropped.
     """
     cal = dict(calibration or {})
     prefer = (cal.get("fnb_layout") or cal.get("layout") or "").strip().lower()
 
     gold = parse_fnb_gold_business_text(text, cal)
     fusion = parse_fnb_fusion_af_text(text, cal)
+    loan = parse_fnb_personal_loan_text(text, cal)
 
     if prefer in ("gold_business", "gold_business_en", "gold"):
-        return gold
-    if prefer in ("fusion_private_wealth_af", "fusion_af", "fusion", "afrikaans"):
-        return fusion if fusion else gold
-
-    # Auto: prefer the layout that recovered more lines
-    if len(fusion) > len(gold):
-        return fusion
-    if gold:
-        return gold
-    return fusion
+        chosen = gold
+    elif prefer in ("fusion_private_wealth_af", "fusion_af", "fusion", "afrikaans"):
+        chosen = fusion if fusion else gold
+    elif prefer in ("personal_loan", "personal_loan_en", "loan"):
+        return loan
+    else:
+        # Auto: Gold Business unless another layout recovered strictly more lines
+        chosen = gold
+        for other in (fusion, loan):
+            if len(other) > len(chosen):
+                chosen = other
+    if chosen is loan:
+        return loan
+    return _drop_non_posting_lines(chosen, _opening_balance(text))
 
 
 def parse_fnb_pdf_text(

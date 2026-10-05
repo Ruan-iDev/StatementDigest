@@ -354,3 +354,187 @@ def test_bank_zero_sample_b_large_debit():
 
     routed = parse_statement(BANK_ZERO_B, get_preset("Bank Zero"), "Bank Zero Sample B.pdf")
     assert [t.amount for t in routed] == [t.amount for t in txs]
+
+
+# ── 2026-10 bot-corpus accuracy pass (synthetic text, no PII) ──────────────
+# Each test below pins a regression proven on real statements in the private
+# bot corpus (samples/bot-corpus/, gitignored). See docs/PARSER_STABILITY.md
+# "Bot corpus accuracy pass" and backend/reconcile_corpus.py.
+
+
+def _discovery_pdf_bytes(lines: list[str]) -> bytes:
+    """Tiny text PDF in Discovery's timeline layout (reportlab is a dependency)."""
+    import io
+
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    y = 800
+    for line in lines:
+        c.drawString(40, y, line)
+        y -= 16
+    c.save()
+    return buf.getvalue()
+
+
+def test_discovery_space_and_comma_thousands_amounts():
+    """Discovery: space-grouped amounts (edition-1) AND comma-grouped (Aug 2026+).
+
+    Comma lines like 'R1,613.50' were silently dropped before the fix, so the
+    Aug/Sep 2026 statements did not reconcile. Space-grouped lines must parse
+    exactly as before.
+    """
+    from app.services.parsers.discovery_pdf import parse_discovery_pdf_text
+
+    pdf = _discovery_pdf_bytes(
+        [
+            "Discovery Gold Transaction Account statement",
+            "Transaction timeline",
+            "Date Card no. Type Details Amount",
+            "Opening balance R93.13",
+            "6 Sep 2022 EFT RUAN FNB R5 932.05",
+            "15 Sep 2022 Transfer - R10 000.00",
+            "13 Jul 2026 EFT CI - IAN - PFT R1,613.50",
+            "24 Jul 2026 EFT Huur - R12,000.00",
+            "9 Dec 2023 Declined Dom Card Purch - R0.00",
+            "16 Jul 2026 Fee Intl payment fee - R3.58",
+            "Closing balance R0.38",
+        ]
+    )
+    txs = parse_discovery_pdf_text(pdf, {})
+    assert [t.amount for t in txs] == [
+        Decimal("5932.05"),
+        Decimal("-10000.00"),
+        Decimal("1613.50"),
+        Decimal("-12000.00"),
+        Decimal("0.00"),
+        Decimal("-3.58"),
+    ]
+    assert str(txs[2].date) == "2026-07-13"
+
+
+_FNB_HEADER_FULL_MONTH = """
+First National Bank - a division of FirstRand Bank Limited.
+Gold Business Account :63000000000
+Statement Period : 26 December 2022 to25 January 2023
+Statement Date : 25 January 2023
+Opening Balance 1,000.00Cr Service Fees 0.00 Credit Rate** Tiered
+Closing Balance 500.00 Cash Deposit Fees 0.00
+Transactions in RAND (ZAR)
+Date Description Amount Balance Bank Charges
+"""
+
+
+def test_fnb_full_month_period_sets_year_and_crosses_year_end():
+    """FNB: 'Statement Period : 26 December 2022 to25 January 2023'.
+
+    The period regex only knew 3-letter months, so most real statements fell
+    back to today's year (2026). Dec lines → 2022, Jan lines → 2023.
+    Bare balance (no Cr) is a debit (overdrawn) balance.
+    """
+    from app.services.parsers.fnb_pdf import parse_fnb_statement_text
+
+    text = _FNB_HEADER_FULL_MONTH + (
+        "28 Dec FNB App Payment To Someone 700.00 300.00Cr\n"
+        "03 Jan FNB App Payment To Someone Else 800.00 500.00\n"
+        "Closing Balance 500.00\n"
+    )
+    txs = parse_fnb_statement_text(text, {"amount_style": "credit_suffix_cr"})
+    assert [str(t.date) for t in txs] == ["2022-12-28", "2023-01-03"]
+    assert [t.amount for t in txs] == [Decimal("-700.00"), Decimal("-800.00")]
+    assert txs[0].balance == Decimal("300.00")
+    assert txs[1].balance == Decimal("-500.00")
+
+
+def test_fnb_no_space_dates_and_compact_period():
+    """FNB Savings / Private Wealth: '16Mar' dates and 'StatementPeriod:15March2021to 14April2021'."""
+    from app.services.parsers.fnb_pdf import parse_fnb_statement_text
+
+    text = (
+        "fnb.co.za\nStatement Period :15March2021to 14April2021\n"
+        "Opening Balance R52.02Cr Credit Rate Tiered\n"
+        "Date Description Amount Balance Bank\n"
+        "Opening Balance 52.02Cr\n"
+        "16Mar FNB App Transfer From Trf Pers To Inv 40,000.00Cr 40,052.02Cr\n"
+        "17Mar FNB App Transfer To Trf Inv To Pers 1,000.00 39,052.02Cr\n"
+        "02Apr #Monthly Account Fee 52.02 39,000.00Cr\n"
+    )
+    txs = parse_fnb_statement_text(text, {})
+    assert [str(t.date) for t in txs] == ["2021-03-16", "2021-03-17", "2021-04-02"]
+    assert sum((t.amount for t in txs), Decimal("0")) == Decimal("38947.98")
+
+
+def test_fnb_edo_collection_attempt_memo_does_not_post():
+    """FNB: 'Edo Collection Attempt … 1,661.98Cr' with an unchanged balance is a memo.
+
+    All 39 such lines in the bot corpus leave the running balance unchanged;
+    counting them broke opening + sum = closing on 20+ statements.
+    """
+    from app.services.parsers.fnb_pdf import parse_fnb_statement_text
+
+    text = (
+        "fnb.co.za\nStatement Period : 16 February 2022 to16 March 2022\n"
+        "Opening Balance 6,703.86Cr Service Fees 0.00\n"
+        "Date Description Amount Balance Bank\n"
+        "01 Mar FNB App Transfer From Ruan Salary 3,000.00Cr 9,703.86Cr\n"
+        "01 Mar Edo Collection Attempt Ct Finance1000000000 1,661.98Cr 9,703.86Cr\n"
+        "02 Mar Internet Trf From Client 16,255.00Cr 25,958.86Cr\n"
+        "Closing Balance 25,958.86Cr\n"
+    )
+    txs = parse_fnb_statement_text(text, {})
+    assert [t.description for t in txs] == [
+        "FNB App Transfer From Ruan Salary",
+        "Internet Trf From Client",
+    ]
+    assert Decimal("6703.86") + sum(t.amount for t in txs) == Decimal("25958.86")
+
+
+def test_fnb_duplicate_statement_copy_in_one_pdf_is_dropped():
+    """FNB: PDF with 'Computer Generated Copy' page + identical original page.
+
+    Only print counters differ; every transaction was counted twice.
+    A different statement (other period) after it must still be kept.
+    """
+    from app.services.parsers.fnb_pdf import _drop_duplicate_copies
+
+    copy = "Computer Generated Copy\nPage1of1\n7723\nStatementPeriod:18February2026to20February2026\n20Feb X 1,000.00Cr 1,000.00Cr"
+    orig = "Page1of1\n7724\nStatementPeriod:18February2026to20February2026\n20Feb X 1,000.00Cr 1,000.00Cr"
+    other = "Page 1 of 1\nStatement Period : 21 February 2026 to20 March 2026\n01 Mar Y 5.00 995.00Cr"
+    assert _drop_duplicate_copies([copy, orig]) == [copy]
+    assert _drop_duplicate_copies([copy, orig, other]) == [copy, other]
+    # Normal multi-page statement untouched
+    p1 = "Page 1 of 2\nStatement Period : 21 February 2026 to20 March 2026\nA"
+    p2 = "Page 2 of 2\nB"
+    assert _drop_duplicate_copies([p1, p2]) == [p1, p2]
+
+
+def test_fnb_personal_loan_layout_sign_from_balance():
+    """FNB Personal Loan: one amount column, direction from the Dr/Cr balance."""
+    from app.services.parsers.fnb_pdf import parse_fnb_statement_text
+
+    text = """FNB LOANS
+Personal Loan Statement as at15 May 2021
+Personal Loan Transaction History from14 March 2021 to15 May 2021
+Transaction Description Debits Credits Balance
+Date R R R
+14Mar2021 Opening Balance 93 063.29Dr
+25Mar2021 Interest 1 945.41 95 008.70Dr
+25Mar2021 #Monthly Service Fee 69.00 95 077.70Dr
+25Mar2021 Debit Order 4 354.82 90 722.88Dr
+20Apr2021 Transfer - Loan Credit 93 763.56 3 040.68Cr
+22Apr2021 Rate Change 3 040.68Cr
+29Apr2021 Debit Adjustment 3 040.68 0.00Dr
+15May2021 Closing Balance 0.00Dr
+"""
+    txs = parse_fnb_statement_text(text, {})
+    assert [t.amount for t in txs] == [
+        Decimal("-1945.41"),
+        Decimal("-69.00"),
+        Decimal("4354.82"),
+        Decimal("93763.56"),
+        Decimal("-3040.68"),
+    ]
+    assert str(txs[0].date) == "2021-03-25"
+    assert Decimal("-93063.29") + sum(t.amount for t in txs) == Decimal("0.00")

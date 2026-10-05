@@ -24,7 +24,7 @@
 | Multi user-profile workspaces | Done v1.3 (extra clients: workspace username + password on create + switch gate) |
 | Upload 3-step + success modal + pulse | Done v1.3 |
 | Transactions dual tabs + Assign to Ledger | Done v1.3 |
-| Parsers (5 islands) | **Discovery 226 · FNB 1000+ · Capitec sample · Nedbank sample · Bank Zero sample** |
+| Parsers (5 islands) | **Discovery 226 · FNB 1000+ · Capitec sample · Nedbank sample · Bank Zero sample** · **bot corpus 173/173 reconcile** (Discovery 49 · FNB 124) — [PARSER_STABILITY.md](./PARSER_STABILITY.md) |
 | Reporting hub + monthly chart | Done — **calibrate after Discovery data** |
 | P&L / PDF letterhead | Partial — polish after real data |
 | Product docs in `docs/` | Living — refreshed 2026-09-16 |
@@ -44,6 +44,12 @@
 - [ ] P&L / SA report hubs polish with real numbers
 - [ ] Budget lines, FY compare, PDF letterhead with business logo
 - [ ] Graph axis / layout tweaks as needed
+
+### Bot test server (isolated) — done 2026-10-05
+- [x] Run the API with `LEDGERFLOW_DATA=/workspace/ledgerflow-bot-data LEDGERFLOW_PORT=8471` (`scripts/start-bot-test-server.sh`) so bots never touch :8470 + Documents DB
+- [x] Frontend can point at it: `NEXT_PUBLIC_API_URL=http://127.0.0.1:8471/api npx next dev -p 3471`
+- [x] Docker: `docker-compose.bot.yml` with its own `ledgerflow-bot-data` volume (:8471 / :3471)
+- [x] Reconciliation harness `backend/reconcile_corpus.py` + per-PDF pytest — see [BOT_TEST_SERVER.md](./BOT_TEST_SERVER.md)
 
 ### 3 — Later (not blocking Discovery → reporting)
 - [ ] **Bulk Capitec Business** multi-statement import accuracy pass

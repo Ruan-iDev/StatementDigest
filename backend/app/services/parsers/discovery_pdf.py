@@ -57,8 +57,12 @@ DATE_RE = re.compile(
 )
 
 # Amount at end: R5 932.05 | - R7 552.00 | -R10.00 | R0.00
+# From Aug 2026 Discovery prints comma thousands: R1,613.50 | - R12,000.00
+# (proven regression: those lines were silently dropped — Aug/Sep 2026
+# statements failed opening + sum = closing). Second alternative is additive;
+# the original space-grouped pattern is unchanged.
 AMOUNT_RE = re.compile(
-    r"(?P<amount>-?\s*R\s*[\d\s]+[.,]\d{2})\s*$",
+    r"(?P<amount>-?\s*R\s*(?:\d{1,3}(?:,\d{3})+\.\d{2}|[\d\s]+[.,]\d{2}))\s*$",
     re.IGNORECASE,
 )
 
