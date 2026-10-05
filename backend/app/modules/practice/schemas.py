@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ORMModel(BaseModel):
@@ -317,6 +317,7 @@ class AddressCard(BaseModel):
     tax_number: Optional[str] = None
     vat_number: Optional[str] = None
     business_registration_number: Optional[str] = None
+    notes: Optional[str] = None
     profile_type: Optional[str] = None
     party_type: Optional[str] = None
 
@@ -578,11 +579,26 @@ class TravelOut(ORMModel):
     created_at: datetime
 
 
+class ProductLabourLink(BaseModel):
+    labour_product_id: int
+    quantity: Decimal
+    labour_name: Optional[str] = None
+
+
 class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    family: str = "quantitative"
     category: Optional[str] = Field(default=None, max_length=80)
     description: Optional[str] = None
     supplier_stock_code: Optional[str] = None
+    supplier_code: Optional[str] = None
+    stock_code: Optional[str] = None
+    max_length_mm: Optional[Decimal] = None
+    max_width_mm: Optional[Decimal] = None
+    thickness_mm: Optional[Decimal] = None
+    cut_and_edge: bool = False
+    price_basis: Optional[str] = None
+    linked_labour: Optional[list[ProductLabourLink]] = None
     cost_price: Decimal = Decimal("0")
     markup_percent: Optional[Decimal] = None
     retail_price: Decimal = Decimal("0")
@@ -590,9 +606,18 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    family: Optional[str] = None
     category: Optional[str] = Field(default=None, max_length=80)
     description: Optional[str] = None
     supplier_stock_code: Optional[str] = None
+    supplier_code: Optional[str] = None
+    stock_code: Optional[str] = None
+    max_length_mm: Optional[Decimal] = None
+    max_width_mm: Optional[Decimal] = None
+    thickness_mm: Optional[Decimal] = None
+    cut_and_edge: Optional[bool] = None
+    price_basis: Optional[str] = None
+    linked_labour: Optional[list[ProductLabourLink]] = None
     cost_price: Optional[Decimal] = None
     markup_percent: Optional[Decimal] = None
     retail_price: Optional[Decimal] = None
@@ -602,15 +627,43 @@ class ProductUpdate(BaseModel):
 class ProductOut(ORMModel):
     id: int
     name: str
+    family: str = "quantitative"
     category: Optional[str] = None
     description: Optional[str] = None
     supplier_stock_code: Optional[str] = None
+    supplier_code: Optional[str] = None
+    stock_code: Optional[str] = None
+    max_length_mm: Optional[Decimal] = None
+    max_width_mm: Optional[Decimal] = None
+    thickness_mm: Optional[Decimal] = None
+    cut_and_edge: bool = False
+    price_basis: Optional[str] = None
+    linked_labour: list[ProductLabourLink] = Field(default_factory=list)
     cost_price: Decimal
     markup_percent: Optional[Decimal] = None
+    uses_default_markup: bool = False
     retail_price: Decimal
     is_archived: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("linked_labour", mode="before")
+    @classmethod
+    def _links(cls, value):
+        return value or []
+
+
+class ProductMarkupDefaultsOut(BaseModel):
+    timber: Optional[Decimal] = None
+    square_meter: Optional[Decimal] = None
+    linear_meter: Optional[Decimal] = None
+    quantitative: Optional[Decimal] = None
+    labour: Optional[Decimal] = None
+
+
+class ProductMarkupDefaultUpdate(BaseModel):
+    family: str
+    markup_percent: Optional[Decimal] = None
 
 
 class StaffCreate(BaseModel):

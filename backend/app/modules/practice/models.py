@@ -143,6 +143,8 @@ class PracticeSettings(Base):
     # Shared VAT for the whole Practice workspace (quotes, invoices, later surfaces).
     vat_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     vat_rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), default=Decimal("15.000"))
+    # Family default markups: {"timber": "40.00", ...}. A blank product markup uses this.
+    product_markup_defaults: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -345,9 +347,23 @@ class PracticeProduct(Base):
         Integer, ForeignKey("user_profiles.id"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # timber | square_meter | linear_meter | quantitative | labour
+    family: Mapped[str] = mapped_column(String(32), nullable=False, default="quantitative", index=True)
     category: Mapped[Optional[str]] = mapped_column(String(80), nullable=True, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     supplier_stock_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    supplier_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    stock_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    max_length_mm: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    max_width_mm: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    thickness_mm: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    # Off: the jobcard adds the product as defined. On: ask for a cut size, and the optimizer may nest it.
+    cut_and_edge: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # whole | square_meter on timber and square metre. unit | meter on linear.
+    price_basis: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    # Cutting labour for timber, square metre, and quantitative products.
+    # [{labour_product_id, quantity, labour_name}] — quantity is per sheet.
+    linked_labour: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     cost_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0.00"))
     markup_percent: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     retail_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0.00"))

@@ -1,6 +1,6 @@
 # Decisions log
 
-**Last updated:** 2026-08-24 · reserved ports 3470 / 8470  
+**Last updated:** 2026-09-30 · Cabinet Flow brief  
 
 Record **agreed** product/tech decisions so we don’t re-debate after session drops.  
 Format: date · decision · why · status.
@@ -61,6 +61,9 @@ Format: date · decision · why · status.
 | 2026-09-02 | Product **category** is free text, no defaults; same name groups; typeahead from existing names | Catalogue without a fixed taxonomy | Agreed |
 | 2026-09-02 | Quote print preview: in-app PNG + Save PDF + Print (no pop-up); Print uses original PDF when possible; preview closes after print | Electron PDF pop-ups were blank | Agreed |
 | 2026-09-02 | Ledger Account Management list grouped Income → Expense → Transfer | Scan by type | Agreed |
+| 2026-09-30 | **Cabinet Flow** is a fresh cabinetry module inside LedgerFlow. Reference product is local **iDev-ERP** (`mycuttinglist-app` 4.4.29). Do not paste that Vite/Supabase app or its git history into this repo | Same login, one SQLite file, one EXE. The ERP keeps running until a slice here replaces a screen | Agreed (direction) · brief in CABINET_FLOW.md |
+| 2026-09-30 | Cabinet Flow build waits until the owner **names a slice**. Coming-soon hub stays. No `cabinet_*` tables before that | Brief is written; code was explicitly deferred | Superseded 2026-10-02 |
+| 2026-10-02 | CF is the production desk. It shares WF clients, projects, and the products catalogue. Dashboard syncs clients and projects only. New jobcard stays coming soon. No `cabinet_*` tables until the jobcard brief | WF keeps quotes, invoices, and the financial project file | Agreed |
 
 ---
 
@@ -76,5 +79,7 @@ Format: date · decision · why · status.
 | Profile per | Bank brand vs bank+account | Brand first; refine later |
 | Queue storage | In-memory jobs vs DB table | In-memory OK; DB table if crash recovery needed |
 | Capitec / Nedbank bulk bar | Same “1000+ verified” as FNB | Run bulk import when ready |
+| Cabinet quote vs Work Flow quote | Shop engine only in Cabinet Flow, and link clients/money — vs a fully separate quote and invoice | Lean: shop engine in Cabinet Flow; link clients and posted income. Not locked |
+| iDev-ERP Supabase history | Leave live jobs in iDev-ERP vs import old jobs into SQLite | Leave them until a slice replaces that screen |
 
 When an open item is decided, move it to **Agreed** and update USER_FLOW / TODO.

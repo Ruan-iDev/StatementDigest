@@ -115,33 +115,80 @@ def _note_image_flowable(rel: str, max_w=160 * mm, max_h=90 * mm):
         return None
 
 
+def _bits(*parts: object, sep: str = ", ") -> str:
+    cleaned: list[str] = []
+    for part in parts:
+        text = str(part or "").strip().rstrip(",").strip()
+        if text:
+            cleaned.append(text)
+    return sep.join(cleaned)
+
+
 def _card_lines(card: Optional[dict]) -> list[str]:
+    """Compact address card: name, street, place, contact, registration."""
     if not card:
         return []
     out: list[str] = []
-    name = card.get("name")
-    trading = card.get("trading_name")
+    name = str(card.get("name") or "").strip()
+    trading = str(card.get("trading_name") or "").strip()
     if name:
-        out.append(str(name))
+        out.append(name)
+    elif trading:
+        out.append(trading)
+        trading = ""
     if trading and trading != name:
         out.append(f"t/a {trading}")
-    for key in ("contact_name", "address_line1", "address_line2"):
-        if card.get(key):
-            out.append(str(card[key]))
-    city = " ".join(x for x in [card.get("city"), card.get("postal_code")] if x)
-    if city:
-        out.append(city)
-    if card.get("country"):
-        out.append(str(card["country"]))
-    if card.get("email"):
-        out.append(str(card["email"]))
-    if card.get("phone"):
-        out.append(str(card["phone"]))
+    street = _bits(card.get("address_line1"), card.get("address_line2"))
+    if street:
+        out.append(street)
+    city = _bits(card.get("city"), card.get("postal_code"), sep=" ")
+    place = _bits(city, card.get("country"))
+    if place:
+        out.append(place)
+    contact = _bits(card.get("contact_name"), card.get("phone"), card.get("email"), sep="  ·  ")
+    if contact:
+        out.append(contact)
+    regs: list[str] = []
     if card.get("business_registration_number"):
-        out.append(f"Reg {card['business_registration_number']}")
+        regs.append(f"Reg {str(card['business_registration_number']).strip()}")
     if card.get("vat_number"):
-        out.append(f"VAT {card['vat_number']}")
+        regs.append(f"VAT {str(card['vat_number']).strip()}")
+    tax = str(card.get("tax_number") or "").strip()
+    vat = str(card.get("vat_number") or "").strip()
+    if tax and tax != vat:
+        regs.append(f"Tax {tax}")
+    if regs:
+        out.append("  ·  ".join(regs))
+    notes = " ".join(line.strip() for line in str(card.get("notes") or "").splitlines() if line.strip())
+    if notes:
+        out.append(notes)
     return out
+
+
+def _card_markup(card: Optional[dict]) -> str:
+    lines = _card_lines(card)
+    if not lines:
+        return ""
+    head, *rest = lines
+    html = f"<b>{_esc(head)}</b>"
+    if rest:
+        html += "<br/>" + "<br/>".join(_esc(line) for line in rest)
+    return html
+
+
+def _parties_table_style() -> TableStyle:
+    return TableStyle(
+        [
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (0, -1), 0),
+            ("RIGHTPADDING", (0, 0), (0, -1), 8),
+            ("LEFTPADDING", (1, 0), (1, -1), 8),
+            ("RIGHTPADDING", (1, 0), (1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 1),
+            ("BOTTOMPADDING", (0, 1), (-1, 1), 0),
+        ]
+    )
 
 
 def invoice_is_paid(doc) -> bool:
@@ -179,6 +226,7 @@ def generate_document_pdf(
     currency: str = "ZAR",
     logo_path: Optional[str] = None,
     issuer: Optional[dict] = None,
+    client: Optional[dict] = None,
 ) -> bytes:
     buf = io.BytesIO()
     page = SimpleDocTemplate(
@@ -284,19 +332,21 @@ def generate_document_pdf(
     story.append(HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#94a3b8")))
     story.append(Spacer(1, 4 * mm))
 
-    from_lines = "<br/>".join(_esc(x) for x in _card_lines(issuer or doc.issuer_snapshot))
-    to_lines = "<br/>".join(_esc(x) for x in _card_lines(doc.client_snapshot))
-    to_label = "To" if is_rfq else "Bill TO"
+    party_style = ParagraphStyle("Party", parent=body, fontSize=8, leading=10)
+    from_lines = _card_markup(issuer or doc.issuer_snapshot)
+    bill_to = client if client is not None else doc.client_snapshot
+    to_lines = _card_markup(bill_to)
+    to_label = "TO" if is_rfq else "BILL TO"
     parties = Table(
         [
             [Paragraph("FROM", label_head), Paragraph(to_label, label_head)],
-            [Paragraph(from_lines or "—", body), Paragraph(to_lines or "—", body)],
+            [Paragraph(from_lines or "—", party_style), Paragraph(to_lines or "—", party_style)],
         ],
         colWidths=[usable / 2, usable / 2],
     )
-    parties.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    parties.setStyle(_parties_table_style())
     story.append(parties)
-    story.append(Spacer(1, 5 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     if is_rfq:
         widths = [usable * 0.28, usable * 0.52, usable * 0.20]
@@ -356,16 +406,12 @@ def generate_document_pdf(
         vat_on = bool(getattr(doc, "vat_enabled", False))
         subtotal = to_decimal(getattr(doc, "subtotal", None) or doc.amount)
         vat_amt = to_decimal(getattr(doc, "vat_amount", None) or 0)
-        rate = to_decimal(getattr(doc, "vat_rate", None) or 15)
         total = to_decimal(doc.amount)
-        if vat_on:
-            totals = [
-                ["Subtotal ex VAT", _money(subtotal, currency)],
-                [f"VAT {rate:g}%", _money(vat_amt, currency)],
-                ["Total incl. VAT", _money(total, currency)],
-            ]
-        else:
-            totals = [["Total excl. VAT", _money(subtotal, currency)]]
+        totals = [
+            ["Subtotal", _money(subtotal, currency)],
+            ["VAT", _money(vat_amt, currency)],
+            ["Total", _money(total if vat_on else subtotal, currency)],
+        ]
         tot = Table(totals, colWidths=[40 * mm, 40 * mm], hAlign="RIGHT")
         tot.setStyle(
             TableStyle(
@@ -605,18 +651,19 @@ def generate_supplier_statement_pdf(
     story.append(HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#94a3b8")))
     story.append(Spacer(1, 4 * mm))
 
-    from_lines = "<br/>".join(_esc(x) for x in _card_lines(issuer))
-    to_lines = "<br/>".join(_esc(x) for x in _card_lines(supplier))
+    party_style = ParagraphStyle("PartyStmt", parent=body, fontSize=8, leading=10)
+    from_lines = _card_markup(issuer)
+    to_lines = _card_markup(supplier)
     parties = Table(
         [
-            [Paragraph("FROM", label_head), Paragraph("Supplier", label_head)],
-            [Paragraph(from_lines or "—", body), Paragraph(to_lines or "—", body)],
+            [Paragraph("FROM", label_head), Paragraph("SUPPLIER", label_head)],
+            [Paragraph(from_lines or "—", party_style), Paragraph(to_lines or "—", party_style)],
         ],
         colWidths=[usable / 2, usable / 2],
     )
-    parties.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    parties.setStyle(_parties_table_style())
     story.append(parties)
-    story.append(Spacer(1, 5 * mm))
+    story.append(Spacer(1, 3 * mm))
 
     widths = [usable * 0.18, usable * 0.34, usable * 0.28, usable * 0.20]
     data = [

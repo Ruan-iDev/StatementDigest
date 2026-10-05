@@ -1,6 +1,6 @@
 # TODO — living backlog
 
-**Last updated:** 2026-09-23 · **App version: 2.1.3** · portable EXE `LedgerFlow-2.1.3-Portable.exe`  
+**Last updated:** 2026-10-05 · **App version: 2.1.3** · portable EXE `LedgerFlow-2.1.3-Portable.exe`  
 **How to use:** Move items between sections as work finishes. Add new items from product conversations. After any session, update **Status snapshot**.  
 **Release notes:** [RELEASE_NOTES.md](./RELEASE_NOTES.md)
 
@@ -28,7 +28,7 @@
 | Reporting hub + monthly chart | Done — **calibrate after Discovery data** |
 | P&L / PDF letterhead | Partial — polish after real data |
 | Product docs in `docs/` | Living — refreshed 2026-09-16 |
-| **Cabinet Flow** (new module) | Named, parked — spec TBD (explain later) |
+| **Cabinet Flow** (new module) | Production desk open 2026-10-02. Jobcard still coming soon — [CABINET_FLOW.md](./CABINET_FLOW.md) |
 
 ---
 
@@ -98,13 +98,14 @@ Work only on **`feature/practice-module`**. See [MODULES.md](./MODULES.md).
 - [x] Quote, invoice, and RFQ Back returns to the list, file, project, or report that opened the document
 - [ ] Merge to `Develop---EXE-Build` only when a slice is shippable
 
-### 5 — Cabinet Flow (new module — spec later)
-Parked until the product shape is explained. Same modular-monolith rules as Work Flow: own folder, own tables, one login / one SQLite / one EXE. See [MODULES.md](./MODULES.md).
-- [x] Sidebar module tile + `/cabinet` placeholder hub (visual only)
-- [ ] Hear the Cabinet Flow brief (what it is, who it is for, what it must not do)
-- [ ] Write the module map (folders, tables, nav, what it uses from core / Work Flow)
-- [ ] Settings → Modules On/Off for Cabinet Flow
-- [ ] Do **not** start the real build until the brief is in this file
+### 5 — Cabinet Flow (production desk — jobcard still coming soon)
+Full write-up: [CABINET_FLOW.md](./CABINET_FLOW.md). Plug-in rules: [MODULES.md](./MODULES.md).
+- [x] Sidebar module tile + production desk (clients, projects, products) — 2026-10-02
+- [x] Products families on the shared catalogue (timber, square meter, linear meter, quantitative, labour)
+- [x] CF client file is a job library. New jobcard is coming soon
+- [x] CF project file shows assigned jobs only (empty until jobcards exist)
+- [ ] Jobcard brief, then job records and assignment to projects
+- [ ] Settings → Modules On/Off for Cabinet Flow — with the first real jobcard slice
 
 ---
 
@@ -196,11 +197,12 @@ Parked until the product shape is explained. Same modular-monolith rules as Work
 - [ ] Same privacy rule: statements stay on device unless user opts into something else  
 
 ### Later / optional
-- [ ] **Cabinet Flow** module — named 2026-09-13; brief still to come (see Next phase §5)
+- [ ] **Cabinet Flow** module — brief in [CABINET_FLOW.md](./CABINET_FLOW.md) (2026-09-30); build only when a slice is named (see Next phase §5)
 - [ ] Standard Bank / Absa parsers (new modules only)
 - [ ] Real multi-user cloud accounts (not the primary “go live” path)
 - [ ] Local LLM assist for categorisation hints
 - [ ] Match uploaded file to existing bank profile automatically
+- [ ] **Image upload → PDF** — upload images and convert them to PDF for storage and documentation
 - [ ] **Financial Analyzer** (Reporting / Dashboard) — explore later
   - Country packs: necessity vs luxury + themes (banking, groceries, fuel, …)
   - Rollup spend: “R X on luxuries” broken down by theme

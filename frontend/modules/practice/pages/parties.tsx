@@ -23,15 +23,29 @@ import { openPdfPreview } from "@/modules/practice/lib/pdf-preview";
 
 type Props = {
   kind: PartyKind;
+  homeHref?: string;
+  openHref?: (id: number) => string;
+  moduleLabel?: string;
+  blurb?: string;
+  hideCommerce?: boolean;
 };
 
-export function PracticePartiesPage({ kind }: Props) {
+export function PracticePartiesPage({
+  kind,
+  homeHref = "/practice",
+  openHref,
+  moduleLabel = "Work Flow",
+  blurb,
+  hideCommerce = false,
+}: Props) {
   const router = useRouter();
   const { flags } = useModuleFlags();
   const isClient = kind === "client";
   const title = isClient ? "Clients" : "Suppliers";
   const noun = isClient ? "client" : "supplier";
   const accent = isClient ? "text-[hsl(var(--neon-amber))]" : "text-[hsl(var(--neon-violet))]";
+  const openCard = (id: number) =>
+    openHref ? openHref(id) : isClient ? clientFileHref(id) : supplierFileHref(id);
 
   const [rows, setRows] = useState<PracticeParty[]>([]);
   const [query, setQuery] = useState("");
@@ -92,20 +106,21 @@ export function PracticePartiesPage({ kind }: Props) {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
           <Link
-            href="/practice"
+            href={homeHref}
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-3 w-3" />
-            Work Flow
+            {moduleLabel}
           </Link>
           <p className={`text-xs font-medium uppercase tracking-[0.2em] ${accent}`}>
-            Work Flow · {isClient ? "Debtors" : "Creditors"}
+            {moduleLabel} · {isClient ? "Debtors" : "Creditors"}
           </p>
           <h1 className="page-title">{title}</h1>
           <p className="page-subtitle max-w-xl">
-            {isClient
-              ? "Open a card to see this client's quotes, invoices, and projects. Edit still opens the details sheet."
-              : "Open a card to see what you have spent with this supplier. Edit still opens the details sheet."}
+            {blurb ||
+              (isClient
+                ? "Open a card to see this client's quotes, invoices, and projects. Edit still opens the details sheet."
+                : "Open a card to see what you have spent with this supplier. Edit still opens the details sheet.")}
           </p>
         </div>
         <Button type="button" onClick={openNew}>
@@ -140,10 +155,10 @@ export function PracticePartiesPage({ kind }: Props) {
               key={row.id}
               className="cursor-pointer transition-colors hover:border-[hsl(var(--neon-amber)/0.45)]"
               onClick={() => {
-                router.push(isClient ? clientFileHref(row.id) : supplierFileHref(row.id));
+                router.push(openCard(row.id));
               }}
               onDoubleClick={() => {
-                router.push(isClient ? clientFileHref(row.id) : supplierFileHref(row.id));
+                router.push(openCard(row.id));
               }}
             >
               <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
@@ -166,7 +181,7 @@ export function PracticePartiesPage({ kind }: Props) {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-                  {isClient && flags.quotes_enabled && (
+                  {isClient && !hideCommerce && flags.quotes_enabled && (
                     <Button
                       type="button"
                       size="sm"
@@ -178,7 +193,7 @@ export function PracticePartiesPage({ kind }: Props) {
                       Quote
                     </Button>
                   )}
-                  {isClient && flags.invoices_enabled && (
+                  {isClient && !hideCommerce && flags.invoices_enabled && (
                     <Button
                       type="button"
                       size="sm"

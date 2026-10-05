@@ -1,10 +1,10 @@
 # Modules — how LedgerFlow grows without rewriting the core
 
-**Last updated:** 2026-09-16 · main · Work Flow in the EXE; **Cabinet Flow** named, not built
+**Last updated:** 2026-10-02 · main · Cabinet Flow production desk open; jobcard still coming soon
 
 This is the map for adding **Work Flow** (Practice: clients, suppliers, staff, products, quotes, invoices, RFQs, project files) and any later bolt-on. Read this before editing module code.
 
-**Named, not started:** **Cabinet Flow** — next bolt-on. Brief still to come; do not scaffold until [TODO.md](./TODO.md) Next phase §5 has the spec.
+**Cabinet Flow** is the production desk. Living brief: [CABINET_FLOW.md](./CABINET_FLOW.md). Clients, projects, and products are shared with Work Flow. New jobcard is still coming soon.
 
 ---
 
@@ -115,11 +115,13 @@ Disable a module without deleting it: remove the id from both registries.
 
 ---
 
-## Cabinet Flow (planned)
+## Cabinet Flow (production desk)
 
-**Status:** name only (2026-09-13). Product owner will explain later.
+**Status:** opened 2026-10-02. Sidebar: Clients, Projects, Products. Dashboard syncs clients and projects only. New jobcard is coming soon. No `cabinet_*` tables yet.
 
-Same plug-in rules as Work Flow when it starts:
+**Living brief:** [CABINET_FLOW.md](./CABINET_FLOW.md). Read that after a dropped session. Short version: a fresh cabinetry system (materials, constructor, cutting-list quotes, nest, MaxCut/OptiPlan, factory board) inside this app. Reference product is local repo **iDev-ERP** (`mycuttinglist-app` 4.4.29). Do not paste that Vite/Supabase app in.
+
+Same plug-in rules as Work Flow when a slice is actually requested:
 
 - Package `backend/app/modules/cabinet/` + `frontend/modules/cabinet/`
 - Own `cabinet_*` tables, `user_profile_id` on every row
@@ -127,8 +129,6 @@ Same plug-in rules as Work Flow when it starts:
 - Thin routes under `frontend/app/cabinet/`
 - Settings → Modules On/Off
 - Does not fork auth or a second database
-
-Until the brief lands: sidebar tile + `/cabinet` coming-soon hub only. No `cabinet_*` tables and no Settings switch.
 
 ---
 

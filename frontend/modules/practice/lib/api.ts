@@ -26,6 +26,7 @@ import type {
   ProjectWrite,
   StaffStatement,
   StaffWrite,
+  ProductFamily,
   ProductWrite,
   SupplierStatement,
   WorkflowOverview,
@@ -159,14 +160,27 @@ export const practiceApi = {
     },
   },
   products: {
-    list: (includeArchived = false, search?: string, limit = 200) => {
+    list: (includeArchived = false, search?: string, limit = 200, family?: string) => {
       const q = new URLSearchParams();
       if (includeArchived) q.set("include_archived", "true");
       if (search?.trim()) q.set("q", search.trim());
+      if (family) q.set("family", family);
       q.set("limit", String(limit));
       return apiRequest<PracticeProduct[]>(`/practice/products?${q}`);
     },
-    categories: () => apiRequest<string[]>("/practice/products/categories"),
+    categories: (family?: string) => {
+      const q = new URLSearchParams();
+      if (family) q.set("family", family);
+      const suffix = q.toString() ? `?${q}` : "";
+      return apiRequest<string[]>(`/practice/products/categories${suffix}`);
+    },
+    markupDefaults: () =>
+      apiRequest<Record<ProductFamily, string | number | null>>("/practice/products/markup-defaults"),
+    saveMarkupDefault: (family: ProductFamily, markupPercent: string | null) =>
+      apiRequest<Record<ProductFamily, string | number | null>>("/practice/products/markup-defaults", {
+        method: "PUT",
+        body: JSON.stringify({ family, markup_percent: markupPercent }),
+      }),
     get: (id: number) => apiRequest<PracticeProduct>(`/practice/products/${id}`),
     create: (body: ProductWrite) =>
       apiRequest<PracticeProduct>("/practice/products", {

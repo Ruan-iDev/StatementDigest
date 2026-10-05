@@ -268,6 +268,8 @@ def migrate(engine) -> None:
                 )
             if "issuer_json" not in scols:
                 conn.execute(text("ALTER TABLE practice_settings ADD COLUMN issuer_json JSON"))
+            if "product_markup_defaults" not in scols:
+                conn.execute(text("ALTER TABLE practice_settings ADD COLUMN product_markup_defaults JSON"))
             added_shared_vat = False
             if "vat_enabled" not in scols:
                 conn.execute(
@@ -314,6 +316,62 @@ def migrate(engine) -> None:
             icols = _columns(conn, "practice_stock_items")
             if "category" not in icols:
                 conn.execute(text("ALTER TABLE practice_stock_items ADD COLUMN category VARCHAR(80)"))
+            if "family" not in icols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE practice_stock_items ADD COLUMN family VARCHAR(32) DEFAULT 'quantitative'"
+                    )
+                )
+            conn.execute(
+                text(
+                    """
+                    UPDATE practice_stock_items
+                    SET family = 'quantitative'
+                    WHERE family IS NULL OR TRIM(family) = ''
+                    """
+                )
+            )
+            sheet_cols = _columns(conn, "practice_stock_items")
+            for col, ddl in (
+                ("supplier_code", "VARCHAR(80)"),
+                ("stock_code", "VARCHAR(80)"),
+                ("max_length_mm", "NUMERIC(18, 2)"),
+                ("max_width_mm", "NUMERIC(18, 2)"),
+                ("thickness_mm", "NUMERIC(18, 2)"),
+                ("cut_and_edge", "BOOLEAN NOT NULL DEFAULT 0"),
+                ("price_basis", "VARCHAR(32)"),
+                ("linked_labour", "JSON"),
+            ):
+                if col not in sheet_cols:
+                    conn.execute(text(f"ALTER TABLE practice_stock_items ADD COLUMN {col} {ddl}"))
+            if "price_basis" in _columns(conn, "practice_stock_items"):
+                conn.execute(
+                    text(
+                        """
+                        UPDATE practice_stock_items
+                        SET price_basis = 'whole'
+                        WHERE family = 'timber' AND (price_basis IS NULL OR TRIM(price_basis) = '')
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE practice_stock_items
+                        SET price_basis = 'square_meter'
+                        WHERE family = 'square_meter' AND (price_basis IS NULL OR TRIM(price_basis) = '')
+                        """
+                    )
+                )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE practice_stock_items
+                        SET price_basis = 'meter'
+                        WHERE family = 'linear_meter' AND (price_basis IS NULL OR TRIM(price_basis) = '')
+                        """
+                    )
+                )
             if "markup_percent" not in icols:
                 conn.execute(
                     text("ALTER TABLE practice_stock_items ADD COLUMN markup_percent NUMERIC(10, 2)")

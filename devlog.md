@@ -7,7 +7,7 @@ Hours are **focused development time** for that calendar day (design + build + d
 |--------|------:|
 | **Total hours (all days)** | **~40+** (estimate across multi-session desktop product work) |
 | **Days logged** | 2+ |
-| **Last updated** | 2026-09-23 · **v2.1.3** |
+| **Last updated** | 2026-09-30 · Cabinet Flow brief (no code) · shipped app still **v2.1.3** |
 
 ---
 
@@ -21,6 +21,21 @@ Hours are **focused development time** for that calendar day (design + build + d
 ---
 
 ## Log
+
+### 2026-09-30
+
+**Hours:** docs only  
+**Who:** Solo  
+**Branch:** `main`  
+**Shipped:** nothing. App remains **v2.1.3**
+
+- Agreed Cabinet Flow is a fresh cabinetry module inside LedgerFlow. iDev-ERP (`mycuttinglist-app` 4.4.29, local repo under `Documents\GitHub\iDev-ERP`) is the reference product, not code to merge
+- Living brief written: `docs/CABINET_FLOW.md`
+- Pointers updated: `docs/README.md`, `MODULES.md`, `TODO.md` §5, `DECISIONS.md`, `WHAT_IS_THIS_APP.md`, `FILE_TREE.md`
+- No `cabinet_*` tables, no backend module, coming-soon hub unchanged
+- Still open: whether cabinet quotes reuse Work Flow documents, and whether old Supabase jobs are ever imported
+
+---
 
 ### 2026-09-23
 

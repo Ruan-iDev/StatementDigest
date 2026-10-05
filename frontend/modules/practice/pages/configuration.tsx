@@ -569,7 +569,7 @@ export function PracticeConfigurationPage() {
           <CardTitle>VAT</CardTitle>
           <CardDescription>
             One switch for the whole Practice workspace — quotes and invoices both use this.
-            On: subtotal ex VAT, VAT line, total incl. Off: total excl. VAT only.
+            Quotes and invoices always show Subtotal, VAT, and Total. Off leaves the VAT line at zero.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -95,9 +95,11 @@ function WindowsFolderIcon({ status, number }: { status: string; number: string 
 export function ProjectFileGrid({
   projects,
   showClient = false,
+  hrefFor,
 }: {
   projects: PracticeProject[];
   showClient?: boolean;
+  hrefFor?: (row: PracticeProject) => string;
 }) {
   const listed = sortProjectFiles(projects);
   return (
@@ -115,7 +117,7 @@ export function ProjectFileGrid({
         return (
           <Link
             key={row.id}
-            href={`/practice/file?id=${row.id}`}
+            href={hrefFor ? hrefFor(row) : `/practice/file?id=${row.id}`}
             role="listitem"
             title={`${number ? `${number} · ` : ""}${name}${client ? ` · ${client}` : ""} · ${status}`}
             className={cn(

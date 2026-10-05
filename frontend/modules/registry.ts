@@ -2,8 +2,10 @@ import type { LucideIcon } from "lucide-react";
 import {
   Archive,
   BookOpen,
+  Boxes,
   FileBarChart,
   FileText,
+  ClipboardList,
   FolderOpen,
   Package,
   Receipt,
@@ -162,12 +164,43 @@ export const WORK_FLOW: AppModule = {
 export const CABINET_FLOW: AppModule = {
   id: "cabinet-flow",
   name: "Cabinet Flow",
-  subtitle: "Coming soon",
-  description: "Next module — brief still to come.",
+  subtitle: "Production",
+  description: "Production desk. Clients, projects, and products are shared with Work Flow.",
   href: "/cabinet",
   accent: "cyan",
   icon: Archive,
-  items: [],
+  items: [
+    {
+      href: "/cabinet/clients",
+      label: "Clients",
+      icon: Users,
+      accent: "cyan",
+    },
+    {
+      href: "/cabinet/jobcards",
+      label: "Jobcards",
+      icon: ClipboardList,
+      accent: "cyan",
+    },
+    {
+      href: "/cabinet/projects",
+      label: "Projects",
+      icon: FolderOpen,
+      accent: "cyan",
+    },
+    {
+      href: "/cabinet/cabinets",
+      label: "Cabinets",
+      icon: Boxes,
+      accent: "cyan",
+    },
+    {
+      href: "/cabinet/products",
+      label: "Products",
+      icon: Package,
+      accent: "lime",
+    },
+  ],
 };
 
 export const APP_MODULES: AppModule[] = [LEDGER_FLOW, WORK_FLOW, CABINET_FLOW];

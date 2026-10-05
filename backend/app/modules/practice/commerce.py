@@ -179,8 +179,16 @@ def _client_card(party: PracticeParty) -> AddressCard:
         tax_number=party.tax_number,
         vat_number=party.vat_number,
         business_registration_number=getattr(party, "business_registration_number", None),
+        notes=getattr(party, "notes", None),
         party_type=getattr(party, "party_type", None) or "individual",
     )
+
+
+def _bill_to_snapshot(row: PracticeDocument) -> dict | None:
+    """Bill To follows the client profile while the document is still linked to one."""
+    if row.party:
+        return _client_card(row.party).model_dump()
+    return row.client_snapshot or None
 
 
 def _replace_lines(db: Session, document: PracticeDocument, lines: list[DocumentLineIn]) -> Decimal:
@@ -245,9 +253,8 @@ def _document_out(db: Session, row: PracticeDocument) -> DocumentOut:
     issuer = _issuer_card(db, profile) if profile else None
     if issuer is None and row.issuer_snapshot:
         issuer = AddressCard.model_validate(row.issuer_snapshot)
-    client = AddressCard.model_validate(row.client_snapshot) if row.client_snapshot else None
-    if client is None and row.party:
-        client = _client_card(row.party)
+    snap = _bill_to_snapshot(row)
+    client = AddressCard.model_validate(snap) if snap else None
     lines = [
         DocumentLineOut(
             id=ln.id,
@@ -708,6 +715,7 @@ def _document_pdf_bytes(db: Session, profile: UserProfile, row: PracticeDocument
         currency=profile.currency or "ZAR",
         logo_path=str(logo) if logo else None,
         issuer=_issuer_card(db, profile).model_dump(),
+        client=_bill_to_snapshot(row),
     )
 
 
@@ -1037,7 +1045,7 @@ def invoice_from_quote(
         notes=body.notes or quote.notes,
         notes_json=getattr(quote, "notes_json", None),
         issuer_snapshot=_issuer_card(db, profile).model_dump() if profile else quote.issuer_snapshot,
-        client_snapshot=quote.client_snapshot,
+        client_snapshot=_bill_to_snapshot(quote),
     )
     db.add(invoice)
     db.flush()
@@ -1114,7 +1122,7 @@ def duplicate_quote(
         notes=quote.notes,
         notes_json=getattr(quote, "notes_json", None),
         issuer_snapshot=_issuer_card(db, profile).model_dump() if profile else quote.issuer_snapshot,
-        client_snapshot=quote.client_snapshot,
+        client_snapshot=_bill_to_snapshot(quote),
     )
     db.add(copy)
     db.flush()

@@ -20,6 +20,7 @@ export function partyToCard(party: PracticeParty): AddressCard {
     tax_number: party.tax_number,
     vat_number: party.vat_number,
     business_registration_number: party.business_registration_number,
+    notes: party.notes,
     party_type: party.party_type,
   };
 }

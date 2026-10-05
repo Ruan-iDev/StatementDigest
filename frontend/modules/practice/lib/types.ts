@@ -230,6 +230,7 @@ export type AddressCard = {
   tax_number?: string | null;
   vat_number?: string | null;
   business_registration_number?: string | null;
+  notes?: string | null;
   profile_type?: string | null;
   party_type?: string | null;
 };
@@ -617,14 +618,32 @@ export type StaffStatement = {
   totals: { spent: string; count: number };
 };
 
+export type ProductFamily = "timber" | "square_meter" | "linear_meter" | "quantitative" | "labour";
+
+export type ProductLabourLink = {
+  labour_product_id: number;
+  quantity: string | number;
+  labour_name?: string | null;
+};
+
 export type PracticeProduct = {
   id: number;
   name: string;
+  family?: ProductFamily | string;
   category?: string | null;
   description: string | null;
   supplier_stock_code: string | null;
+  supplier_code?: string | null;
+  stock_code?: string | null;
+  max_length_mm?: string | number | null;
+  max_width_mm?: string | number | null;
+  thickness_mm?: string | number | null;
+  cut_and_edge?: boolean;
+  price_basis?: "whole" | "square_meter" | "unit" | "meter" | string | null;
+  linked_labour?: ProductLabourLink[] | null;
   cost_price: string | number;
   markup_percent?: string | number | null;
+  uses_default_markup?: boolean;
   retail_price: string | number;
   is_archived: boolean;
   created_at: string;
@@ -633,9 +652,18 @@ export type PracticeProduct = {
 
 export type ProductWrite = {
   name: string;
+  family?: ProductFamily | string | null;
   category?: string | null;
   description?: string | null;
   supplier_stock_code?: string | null;
+  supplier_code?: string | null;
+  stock_code?: string | null;
+  max_length_mm?: number | string | null;
+  max_width_mm?: number | string | null;
+  thickness_mm?: number | string | null;
+  cut_and_edge?: boolean;
+  price_basis?: "whole" | "square_meter" | "unit" | "meter" | string | null;
+  linked_labour?: ProductLabourLink[] | null;
   cost_price?: number | string | null;
   markup_percent?: number | string | null;
   retail_price?: number | string | null;

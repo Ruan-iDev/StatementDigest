@@ -15,7 +15,17 @@ import { FeatureOffPage } from "@/modules/practice/pages/disabled";
 import { ProjectFileGrid } from "@/modules/practice/pages/project-file-grid";
 import type { PracticeParty, PracticeProject } from "@/modules/practice/lib/types";
 
-export function PracticeProjectsPage() {
+export function PracticeProjectsPage({
+  homeHref = "/practice",
+  fileHref = (id: number) => `/practice/file?id=${id}`,
+  moduleLabel = "Work Flow",
+  blurb = "Each project is a folder. The number sits on the folder, the name underneath. Open one, fill in the info sheet, then add notes.",
+}: {
+  homeHref?: string;
+  fileHref?: (id: number) => string;
+  moduleLabel?: string;
+  blurb?: string;
+} = {}) {
   const router = useRouter();
   const { flags, ready } = useModuleFlags();
   const [rows, setRows] = useState<PracticeProject[]>([]);
@@ -66,7 +76,7 @@ export function PracticeProjectsPage() {
         client_id: clientId ? Number(clientId) : null,
         summary: summary.trim() || null,
       });
-      router.push(`/practice/file?id=${created.id}`);
+      router.push(fileHref(created.id));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not open project");
       setBusy(false);
@@ -77,20 +87,17 @@ export function PracticeProjectsPage() {
     <div className="space-y-6">
       <header className="space-y-1">
         <Link
-          href="/practice"
+          href={homeHref}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-3 w-3" />
-          Work Flow
+          {moduleLabel}
         </Link>
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-[hsl(var(--neon-cyan))]">
-          Work Flow · Library
+          {moduleLabel} · Library
         </p>
         <h1 className="page-title">Projects</h1>
-        <p className="page-subtitle max-w-xl">
-          Each project is a folder. The number sits on the folder, the name underneath. Open one,
-          fill in the info sheet, then add notes.
-        </p>
+        <p className="page-subtitle max-w-xl">{blurb}</p>
       </header>
 
       {error && !formOpen && <p className="text-sm text-destructive">{error}</p>}
@@ -106,7 +113,7 @@ export function PracticeProjectsPage() {
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">No project files yet.</p>
         ) : (
-          <ProjectFileGrid projects={rows} showClient />
+          <ProjectFileGrid projects={rows} showClient hrefFor={(row) => fileHref(row.id)} />
         )}
       </div>
 

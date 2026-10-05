@@ -15,13 +15,14 @@ If a chat/session drops, start here and continue from `TODO.md` + root `devlog.m
 | [UPDATES.md](./UPDATES.md) | Version file + OTA channel (when enabled) | Versioning / update hosting |
 | [DESKTOP_BUILD.md](./DESKTOP_BUILD.md) | How to package the Windows portable EXE | Build pipeline changes |
 | [MODULES.md](./MODULES.md) | How bolt-on modules (Practice) sit on the core | Module architecture or a new module |
+| [CABINET_FLOW.md](./CABINET_FLOW.md) | Living brief for the cabinetry module (reference: iDev-ERP). No code yet | Cabinet Flow shape, overlap, or a named slice |
 | [THEME.md](./THEME.md) | Theme packs + how to add another | Appearance or a new look |
 | [DECISIONS.md](./DECISIONS.md) | Short log of agreed decisions | After planning agreements |
 | [AIBrainSelfTrain.md](./AIBrainSelfTrain.md) | Dev train / ghost feedback loop | Training feature changes |
 | [DISCLAIMER_AND_LIABILITY.md](./DISCLAIMER_AND_LIABILITY.md) | Upload Accept gate + acceptance audit | Disclaimer / legal UX |
 | [../devlog.md](../devlog.md) | Daily hours + session narrative | End of each work day |
 
-**Last documentation pass:** 2026-09-23 · **shipped app v2.1.3**
+**Last documentation pass:** 2026-09-30 · **shipped app v2.1.3** · Cabinet Flow brief written, not built
 
 ## Quick resume (next session)
 
@@ -32,6 +33,7 @@ If a chat/session drops, start here and continue from `TODO.md` + root `devlog.m
 5. **(3)** Later: bulk Capitec + Nedbank accuracy; OTA channel; code signing  
 6. Do **not** edit locked parsers for another bank — [PARSER_STABILITY.md](./PARSER_STABILITY.md)  
 7. Work Flow lives on **`feature/practice-module`** — [MODULES.md](./MODULES.md)  
+8. Cabinet Flow brief is [CABINET_FLOW.md](./CABINET_FLOW.md) — design only, no code until a slice is named  
 
 ## Parser lock snapshot
 

@@ -20,6 +20,7 @@ App - LedgerFlow/
 │   ├── FILE_TREE.md          # This file
 │   ├── TODO.md               # Living backlog + next phase
 │   ├── DECISIONS.md          # Agreed decisions log
+│   ├── CABINET_FLOW.md       # Living Cabinet Flow brief (2026-09-30, no code)
 │   ├── AIBrainSelfTrain.md
 │   └── DISCLAIMER_AND_LIABILITY.md
 │

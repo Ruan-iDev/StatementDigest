@@ -7,11 +7,61 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { practiceApi } from "@/modules/practice/lib/api";
+import { priceBasisLabel, priceBasisOf } from "@/modules/practice/lib/price-basis";
 import { formatMoney } from "@/lib/utils";
-import type { PracticeProduct, ProductWrite } from "@/modules/practice/lib/types";
+import type { PracticeProduct, ProductFamily, ProductWrite } from "@/modules/practice/lib/types";
 import { ProductFormModal } from "@/modules/practice/pages/product-form";
 
+const FAMILIES: { id: ProductFamily; label: string; hint: string }[] = [
+  {
+    id: "timber",
+    label: "Timber Products",
+    hint: "Sheets and solid timber the nest can optimise. Price the whole item or a square metre.",
+  },
+  {
+    id: "square_meter",
+    label: "Square Meter Products",
+    hint: "Granite, glass, paint, vinyl. Price the whole item or a square metre.",
+  },
+  {
+    id: "linear_meter",
+    label: "Linear Meter Products",
+    hint: "Length-sold items. Price a unit or a metre.",
+  },
+  {
+    id: "quantitative",
+    label: "Quantitative Products",
+    hint: "Counted items. This is the catalogue the quotes already use.",
+  },
+  {
+    id: "labour",
+    label: "Labour",
+    hint: "Time and work, kept off the counted list.",
+  },
+];
+
 type CategoryGroup = { key: string; label: string; items: PracticeProduct[] };
+
+const EMPTY_DEFAULTS: Record<ProductFamily, string> = {
+  timber: "",
+  square_meter: "",
+  linear_meter: "",
+  quantitative: "",
+  labour: "",
+};
+
+function percentText(value: string | number | null | undefined): string {
+  if (value == null || value === "") return "";
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : "";
+}
+
+function samePercent(left: string, right: string): boolean {
+  if (left.trim() === "" && right.trim() === "") return true;
+  const a = Number(left);
+  const b = Number(right);
+  return Number.isFinite(a) && Number.isFinite(b) && a === b;
+}
 
 function groupByCategory(rows: PracticeProduct[]): CategoryGroup[] {
   const map = new Map<string, CategoryGroup>();
@@ -20,7 +70,7 @@ function groupByCategory(rows: PracticeProduct[]): CategoryGroup[] {
     const key = raw.toLowerCase();
     const existing = map.get(key);
     if (existing) existing.items.push(row);
-    else map.set(key, { key, label: raw || "Uncategorised", items: [row] });
+    else map.set(key, { key, label: raw || "No group", items: [row] });
   }
   return [...map.values()].sort((a, b) => {
     if (a.key === "" && b.key !== "") return 1;
@@ -29,34 +79,72 @@ function groupByCategory(rows: PracticeProduct[]): CategoryGroup[] {
   });
 }
 
-export function PracticeProductsLibraryPage() {
+export function PracticeProductsLibraryPage({ homeHref = "/practice" }: { homeHref?: string }) {
+  const inCabinet = homeHref.startsWith("/cabinet");
+  const [family, setFamily] = useState<ProductFamily>("quantitative");
+  const [defaults, setDefaults] = useState<Record<ProductFamily, string>>(EMPTY_DEFAULTS);
+  const [savedDefaults, setSavedDefaults] = useState<Record<ProductFamily, string>>(EMPTY_DEFAULTS);
   const [rows, setRows] = useState<PracticeProduct[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PracticeProduct | null>(null);
+  const active = FAMILIES.find((item) => item.id === family) ?? FAMILIES[0];
 
-  async function load(search = query) {
+  async function load(search = query, nextFamily = family) {
     const [list, cats] = await Promise.all([
-      practiceApi.products.list(false, search, 200),
-      practiceApi.products.categories().catch(() => [] as string[]),
+      practiceApi.products.list(false, search, 200, nextFamily),
+      practiceApi.products.categories(nextFamily).catch(() => [] as string[]),
     ]);
     setRows(list);
     setCategories(cats);
   }
 
+  function applyDefaults(map: Record<string, string | number | null>) {
+    const next = { ...EMPTY_DEFAULTS };
+    (Object.keys(EMPTY_DEFAULTS) as ProductFamily[]).forEach((id) => {
+      next[id] = percentText(map[id]);
+    });
+    setDefaults(next);
+    setSavedDefaults(next);
+  }
+
+  useEffect(() => {
+    practiceApi.products
+      .markupDefaults()
+      .then(applyDefaults)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load default markups"));
+  }, []);
+
   useEffect(() => {
     const delay = query.trim() ? 180 : 0;
     const t = window.setTimeout(() => {
-      load(query).catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load"));
+      load(query, family).catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load"));
     }, delay);
     return () => window.clearTimeout(t);
-  }, [query]);
+  }, [query, family]);
+
+  async function commitDefault(id: ProductFamily) {
+    const raw = defaults[id].trim();
+    if (samePercent(raw, savedDefaults[id])) return;
+    if (raw !== "" && !Number.isFinite(Number(raw))) {
+      setError("Enter a markup percent, or leave it blank.");
+      return;
+    }
+    try {
+      setError(null);
+      const saved = await practiceApi.products.saveMarkupDefault(id, raw === "" ? null : raw);
+      applyDefaults(saved);
+      if (id === family) await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Could not save the default markup");
+    }
+  }
 
   async function save(body: ProductWrite) {
     if (editing) await practiceApi.products.update(editing.id, body);
-    else await practiceApi.products.create(body);
+    else await practiceApi.products.create({ ...body, family });
     await load();
   }
 
@@ -87,19 +175,19 @@ export function PracticeProductsLibraryPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
           <Link
-            href="/practice"
+            href={homeHref}
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-3 w-3" />
-            Work Flow
+            {inCabinet ? "Cabinet Flow" : "Work Flow"}
           </Link>
           <p className="text-xs font-medium uppercase tracking-[0.2em] text-[hsl(var(--neon-lime))]">
-            Work Flow · Catalogue
+            {inCabinet ? "Cabinet Flow · Same catalogue" : "Work Flow · Catalogue"}
           </p>
           <h1 className="page-title">Products</h1>
           <p className="page-subtitle max-w-xl">
-            Goods, labour, or anything else that repeats on a quote. Type the name on a line to pull
-            the description and retail price. Cost stays here for you.
+            One catalogue for Work Flow and Cabinet Flow. Pick a family, then add the lines you
+            quote. Cost stays here for you.
           </p>
         </div>
         <Button type="button" onClick={openNew}>
@@ -108,6 +196,51 @@ export function PracticeProductsLibraryPage() {
       </header>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {FAMILIES.map((item) => {
+          const selected = item.id === family;
+          return (
+            <div key={item.id} className="space-y-1.5">
+              <label
+                htmlFor={`markup-${item.id}`}
+                className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+              >
+                Default markup %
+              </label>
+              <Input
+                id={`markup-${item.id}`}
+                type="number"
+                step="0.01"
+                value={defaults[item.id]}
+                onChange={(e) => setDefaults((current) => ({ ...current, [item.id]: e.target.value }))}
+                onBlur={() => void commitDefault(item.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                }}
+                placeholder="—"
+                aria-label={`${item.label} default markup percent`}
+                className="h-8"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant={selected ? "default" : "outline"}
+                className="h-auto w-full whitespace-normal px-2 py-2 text-center leading-tight"
+                onClick={() => setFamily(item.id)}
+              >
+                {item.label}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-sm text-muted-foreground">{active.hint}</p>
+      <p className="text-[11px] text-muted-foreground">
+        A blank markup on a product uses the default above its family. Type a markup on the product
+        to override it. Products that already have their own markup keep it until you clear that
+        field.
+      </p>
 
       <div className="max-w-md">
         <Input
@@ -122,7 +255,9 @@ export function PracticeProductsLibraryPage() {
       <div className="space-y-6">
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            {query.trim() ? `No products match "${query.trim()}".` : "No products yet."}
+            {query.trim()
+              ? `No ${active.label.toLowerCase()} match "${query.trim()}".`
+              : `No ${active.label.toLowerCase()} yet.`}
           </p>
         ) : showGroups ? (
           groups.map((group) => (
@@ -137,6 +272,7 @@ export function PracticeProductsLibraryPage() {
                 <ProductCard
                   key={row.id}
                   row={row}
+                  defaultMarkup={defaults[family]}
                   onEdit={openEdit}
                   onArchive={(id) => void archive(id)}
                 />
@@ -149,6 +285,7 @@ export function PracticeProductsLibraryPage() {
               <ProductCard
                 key={row.id}
                 row={row}
+                defaultMarkup={defaults[family]}
                 onEdit={openEdit}
                 onArchive={(id) => void archive(id)}
               />
@@ -160,6 +297,8 @@ export function PracticeProductsLibraryPage() {
       <ProductFormModal
         open={formOpen}
         initial={editing}
+        family={family}
+        defaultMarkup={defaults[family]}
         categories={categories}
         onClose={() => setFormOpen(false)}
         onSave={save}
@@ -168,12 +307,53 @@ export function PracticeProductsLibraryPage() {
   );
 }
 
+function mmLabel(value: string | number | null | undefined): string | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return String(n);
+}
+
+function sheetSize(row: PracticeProduct): string | null {
+  if (
+    row.family !== "timber" &&
+    row.family !== "square_meter" &&
+    row.family !== "linear_meter" &&
+    row.family !== "quantitative"
+  ) {
+    return null;
+  }
+  const parts = [row.max_length_mm, row.max_width_mm, row.thickness_mm].map(mmLabel).filter(Boolean);
+  return parts.length ? `${parts.join(" × ")} mm` : null;
+}
+
+function labourLabel(row: PracticeProduct): string | null {
+  if (!row.cut_and_edge || !row.linked_labour?.length) return null;
+  return row.linked_labour
+    .map((link) => `${link.labour_name || "Labour"} × ${link.quantity} per sheet`)
+    .join(", ");
+}
+
+function markupLabel(row: PracticeProduct, defaultMarkup: string): string | null {
+  if (row.uses_default_markup) {
+    const n = Number(defaultMarkup);
+    if (!Number.isFinite(n)) return null;
+    return `Markup ${n}% default`;
+  }
+  if (row.markup_percent == null || row.markup_percent === "") return null;
+  const n = Number(row.markup_percent);
+  if (!Number.isFinite(n)) return null;
+  return `Markup ${n}%`;
+}
+
 function ProductCard({
   row,
+  defaultMarkup,
   onEdit,
   onArchive,
 }: {
   row: PracticeProduct;
+  defaultMarkup: string;
   onEdit: (row: PracticeProduct) => void;
   onArchive: (id: number) => void;
 }) {
@@ -190,11 +370,15 @@ function ProductCard({
           )}
           <div className="text-xs text-muted-foreground">
             {[
+              sheetSize(row),
+              row.supplier_code ? `Supplier ${row.supplier_code}` : null,
+              row.stock_code ? `Stock ${row.stock_code}` : null,
+              row.cut_and_edge ? "Cut and Edge" : null,
+              labourLabel(row),
+              priceBasisLabel(priceBasisOf(row.family, row.price_basis)),
               row.supplier_stock_code ? `Code ${row.supplier_stock_code}` : null,
               `Cost ${formatMoney(row.cost_price)}`,
-              row.markup_percent != null && row.markup_percent !== ""
-                ? `Markup ${Number(row.markup_percent).toLocaleString("en-ZA", { maximumFractionDigits: 2 })}%`
-                : null,
+              markupLabel(row, defaultMarkup),
               `Retail ${formatMoney(row.retail_price)}`,
             ]
               .filter(Boolean)

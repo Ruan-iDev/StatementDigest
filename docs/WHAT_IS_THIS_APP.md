@@ -46,6 +46,9 @@ They should never need to understand double-entry, chart of accounts theory, or 
 7. **Practice (module, in progress on `feature/practice-module`)**  
    Bolt-on desk for **clients**, **suppliers**, **project files**, then quotes and invoices. A project is a file you open — info sheet plus a dated paper trail. It shares login, workspace, and the local database with the core books. It does not replace statement upload.
 
+8. **Cabinet Flow (production desk, 2026-10-02)**  
+   Same clients, projects, and products as Work Flow. Cabinet Flow is where jobs will be produced. New jobcard is still coming soon. Detail: [CABINET_FLOW.md](./CABINET_FLOW.md).
+
 ---
 
 ## What it is *not*

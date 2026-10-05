@@ -176,31 +176,36 @@ function AddressBlock({
   }
   const displayName = card.name || card.trading_name;
   const ta = card.name ? tradingAsLine(card.name, card.trading_name) : null;
-  const lines = [
-    ta,
-    card.contact_name,
-    card.address_line1,
-    card.address_line2,
-    [card.city, card.postal_code].filter(Boolean).join(" "),
-    card.country,
-    card.email,
-    card.phone,
+  const tidy = (value?: string | null) => (value || "").trim().replace(/,+\s*$/, "");
+  const street = [tidy(card.address_line1), tidy(card.address_line2)].filter(Boolean).join(", ");
+  const city = [tidy(card.city), tidy(card.postal_code)].filter(Boolean).join(" ");
+  const place = [city, tidy(card.country)].filter(Boolean).join(", ");
+  const contact = [card.contact_name, card.phone, card.email].filter(Boolean).join("  ·  ");
+  const regs = [
     card.business_registration_number ? `Reg ${card.business_registration_number}` : null,
     card.vat_number ? `VAT ${card.vat_number}` : null,
-  ].filter(Boolean) as string[];
+    card.tax_number && card.tax_number !== card.vat_number ? `Tax ${card.tax_number}` : null,
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
+  const notes = (card.notes || "").replace(/\s*\n\s*/g, " ").trim();
+  const lines = [ta, street, place, contact, regs, notes].filter(Boolean) as string[];
 
   return (
     <div>
       {title ? (
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
       ) : null}
-      <p className={title ? "mt-1 text-sm font-semibold" : "text-sm font-semibold"}>{displayName}</p>
-      {ta ? <p className="text-sm font-medium">{ta}</p> : null}
-      <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-        {lines.filter((l) => l !== ta).map((l) => (
-          <p key={l}>{l}</p>
-        ))}
-      </div>
+      <p className="text-[13px] font-semibold leading-tight">{displayName}</p>
+      {lines.length > 0 ? (
+        <div className="mt-0.5 text-[11px] leading-tight text-muted-foreground">
+          {lines.map((line) => (
+            <p key={line} className="leading-tight">
+              {line}
+            </p>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -820,8 +825,8 @@ export function PracticeDocumentEditorPage() {
                   <AddressBlock title="From" card={issuer} />
                 </td>
                 <td>
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                       {isRfq ? "To" : "Bill to"}
                     </p>
                     <ClientPicker
@@ -1003,27 +1008,18 @@ export function PracticeDocumentEditorPage() {
           {!isRfq && (
           <div className="flex justify-end">
             <div className="min-w-[240px] space-y-1 text-right text-sm">
-              {vatEnabled ? (
-                <>
-                  <div className="flex justify-between gap-6 text-muted-foreground">
-                    <span>Subtotal ex VAT</span>
-                    <span className="tabular-nums">{formatMoney(subtotal, currency)}</span>
-                  </div>
-                  <div className="flex justify-between gap-6 text-muted-foreground">
-                    <span>VAT {vatRate}%</span>
-                    <span className="tabular-nums">{formatMoney(vatAmount, currency)}</span>
-                  </div>
-                  <div className="flex justify-between gap-6 text-base font-semibold">
-                    <span>Total incl. VAT</span>
-                    <span className="tabular-nums">{formatMoney(totalIncl, currency)}</span>
-                  </div>
-                </>
-              ) : (
-                <div className="flex justify-between gap-6 text-base font-semibold">
-                  <span>Total excl. VAT</span>
-                  <span className="tabular-nums">{formatMoney(subtotal, currency)}</span>
-                </div>
-              )}
+              <div className="flex justify-between gap-6 text-muted-foreground">
+                <span>Subtotal</span>
+                <span className="tabular-nums">{formatMoney(subtotal, currency)}</span>
+              </div>
+              <div className="flex justify-between gap-6 text-muted-foreground">
+                <span>VAT</span>
+                <span className="tabular-nums">{formatMoney(vatAmount, currency)}</span>
+              </div>
+              <div className="flex justify-between gap-6 text-base font-semibold">
+                <span>Total</span>
+                <span className="tabular-nums">{formatMoney(totalIncl, currency)}</span>
+              </div>
             </div>
           </div>
           )}

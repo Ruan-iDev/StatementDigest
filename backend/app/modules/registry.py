@@ -31,7 +31,7 @@ class ModuleManifest:
 
 
 # Only ids listed here are loaded. Comment one out to disable without deleting it.
-ENABLED_MODULE_IDS: tuple[str, ...] = ("practice",)
+ENABLED_MODULE_IDS: tuple[str, ...] = ("practice", "cabinet")
 
 
 def _load_manifest(module_id: str) -> ModuleManifest:
