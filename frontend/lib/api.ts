@@ -283,6 +283,62 @@ export type ImportBatch = {
   bank_profile_name?: string | null;
 };
 
+
+export type SaReportTxnLine = {
+  transaction_id: number;
+  date: string;
+  description: string;
+  amount: string;
+  ledger_id: number | null;
+  ledger_name: string | null;
+  reference: string | null;
+  source_file: string | null;
+  drill_ledger_id: number | null;
+  running_balance: string | null;
+};
+
+export type SaReportLedgerLine = {
+  ledger_id: number;
+  ledger_name: string;
+  ledger_type: string;
+  amount: string;
+  debit: string;
+  credit: string;
+  txn_count: number;
+  note: string | null;
+};
+
+export type SaReportSection = {
+  key: string;
+  title: string;
+  kind: string;
+  lines: SaReportLedgerLine[];
+  transactions: SaReportTxnLine[];
+  summary: Record<string, string>;
+  stub_message: string | null;
+};
+
+export type SaSupportReport = {
+  report_key: string;
+  title: string;
+  period_label: string;
+  date_from: string;
+  date_to: string;
+  currency: string;
+  status: string;
+  notes: string[];
+  available_years: FinancialYearOption[];
+  sections: SaReportSection[];
+  totals: Record<string, string>;
+};
+
+export type SaReportCatalogItem = {
+  key: string;
+  title: string;
+  group: string;
+  status: string;
+};
+
 export type DashboardStats = {
   pending_count: number;
   total_transactions: number;
@@ -948,5 +1004,45 @@ export const api = {
         `Monthly_Overview_${label}.pdf`
       );
     },
+    catalog: () => request<SaReportCatalogItem[]>("/reports/catalog"),
+    sa: (
+      key: string,
+      params: {
+        fy_start_year?: number | string;
+        period?: string;
+        date_from?: string;
+        date_to?: string;
+        ledger_id?: number | string;
+      } = {}
+    ) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== "") q.set(k, String(v));
+      });
+      const qs = q.toString();
+      return request<SaSupportReport>(`/reports/${key}${qs ? `?${qs}` : ""}`);
+    },
+    downloadSaPdf: async (
+      key: string,
+      params: {
+        fy_start_year?: number | string;
+        period?: string;
+        date_from?: string;
+        date_to?: string;
+        ledger_id?: number | string;
+      } = {}
+    ) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== "") q.set(k, String(v));
+      });
+      const label =
+        params.fy_start_year != null ? `FY${params.fy_start_year}` : "report";
+      await downloadAuthenticated(
+        `/reports/sa/${key}/pdf?${q}`,
+        `${key}_${label}.pdf`
+      );
+    },
+
   },
 };

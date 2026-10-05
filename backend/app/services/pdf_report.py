@@ -1020,3 +1020,199 @@ def generate_monthly_overview_pdf(
 
     doc.build(story)
     return buffer.getvalue()
+
+
+def generate_sa_support_pdf(
+    report,
+    letterhead: Optional[PdfLetterhead] = None,
+) -> bytes:
+    """Portrait A4 PDF for SA support / tax workpapers."""
+    from app.schemas import SaSupportReport
+
+    assert isinstance(report, SaSupportReport)
+    buffer = io.BytesIO()
+    page_w, _page_h = A4
+    usable_w = page_w - 30 * mm
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=12 * mm if letterhead else 15 * mm,
+        bottomMargin=15 * mm,
+        title=f"{report.title} – {report.period_label}",
+    )
+    styles = getSampleStyleSheet()
+    title_st = ParagraphStyle(
+        "SaTitle",
+        parent=styles["Heading1"],
+        fontSize=14,
+        spaceAfter=4,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    sub_st = ParagraphStyle(
+        "SaSub",
+        parent=styles["Normal"],
+        fontSize=8,
+        textColor=colors.HexColor("#475569"),
+        spaceAfter=6,
+    )
+    sec_st = ParagraphStyle(
+        "SaSec",
+        parent=styles["Heading2"],
+        fontSize=11,
+        spaceBefore=8,
+        spaceAfter=4,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    note_st = ParagraphStyle(
+        "SaNote",
+        parent=styles["Normal"],
+        fontSize=7.5,
+        textColor=colors.HexColor("#64748b"),
+        spaceAfter=2,
+    )
+    body_st = ParagraphStyle(
+        "SaBody",
+        parent=styles["Normal"],
+        fontSize=8,
+        textColor=colors.HexColor("#334155"),
+    )
+    story: list = []
+    if letterhead:
+        story.extend(_letterhead_flowables(letterhead, usable_w))
+    story.append(Paragraph(_escape(report.title), title_st))
+    story.append(
+        Paragraph(
+            f"Period: <b>{_escape(report.period_label)}</b> &nbsp;|&nbsp; "
+            f"{report.date_from.isoformat()} → {report.date_to.isoformat()} &nbsp;|&nbsp; "
+            f"{_escape(report.currency)} &nbsp;|&nbsp; status: <b>{_escape(report.status)}</b>",
+            sub_st,
+        )
+    )
+    for n in report.notes[:6]:
+        story.append(Paragraph(f"• {_escape(n)}", note_st))
+
+    if report.totals:
+        tot_data = [["Total", "Amount"]]
+        for k, v in report.totals.items():
+            tot_data.append([_escape(k.replace("_", " ")), _money(v, report.currency)])
+        t = Table(tot_data, colWidths=[110 * mm, 60 * mm])
+        t.setStyle(
+            TableStyle(
+                [
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        story.append(Spacer(1, 4))
+        story.append(t)
+
+    for sec in report.sections:
+        story.append(Paragraph(_escape(sec.title), sec_st))
+        if sec.stub_message:
+            story.append(Paragraph(_escape(sec.stub_message), body_st))
+        if sec.summary:
+            rows = [["Field", "Value"]]
+            for k, v in sec.summary.items():
+                rows.append([_escape(str(k).replace("_", " ")), _escape(str(v))])
+            st = Table(rows, colWidths=[90 * mm, 80 * mm])
+            st.setStyle(
+                TableStyle(
+                    [
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+                        ("GRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#e2e8f0")),
+                        ("TOPPADDING", (0, 0), (-1, -1), 2),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                    ]
+                )
+            )
+            story.append(st)
+        if sec.lines:
+            has_dc = any(ln.debit or ln.credit for ln in sec.lines)
+            if has_dc:
+                rows = [["Ledger", "Type", "Debit", "Credit"]]
+                for ln in sec.lines:
+                    rows.append(
+                        [
+                            _escape(ln.ledger_name),
+                            _escape(ln.ledger_type),
+                            _money(ln.debit, report.currency) if ln.debit else "",
+                            _money(ln.credit, report.currency) if ln.credit else "",
+                        ]
+                    )
+                col_w = [70 * mm, 25 * mm, 35 * mm, 35 * mm]
+            else:
+                rows = [["Ledger", "Type", "Amount"]]
+                for ln in sec.lines:
+                    rows.append(
+                        [
+                            _escape(ln.ledger_name),
+                            _escape(ln.ledger_type),
+                            _money(ln.amount, report.currency),
+                        ]
+                    )
+                col_w = [95 * mm, 30 * mm, 40 * mm]
+            lt = Table(rows, colWidths=col_w, repeatRows=1)
+            lt.setStyle(
+                TableStyle(
+                    [
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                        ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+                        ("GRID", (0, 0), (-1, -1), 0.2, colors.HexColor("#e2e8f0")),
+                        ("TOPPADDING", (0, 0), (-1, -1), 2),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                    ]
+                )
+            )
+            story.append(lt)
+        # Cap transaction dump in PDF
+        if sec.transactions:
+            rows = [["Date", "Description", "Amount"]]
+            for tx in sec.transactions[:80]:
+                desc = (tx.description or "")[:60]
+                rows.append(
+                    [
+                        tx.date.isoformat(),
+                        _escape(desc),
+                        _money(tx.amount, report.currency),
+                    ]
+                )
+            if len(sec.transactions) > 80:
+                rows.append(["", f"… +{len(sec.transactions) - 80} more (see on-screen)", ""])
+            tt = Table(rows, colWidths=[25 * mm, 105 * mm, 35 * mm], repeatRows=1)
+            tt.setStyle(
+                TableStyle(
+                    [
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 7),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f8fafc")),
+                        ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+                        ("GRID", (0, 0), (-1, -1), 0.15, colors.HexColor("#e2e8f0")),
+                        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                    ]
+                )
+            )
+            story.append(Spacer(1, 3))
+            story.append(tt)
+
+    story.append(Spacer(1, 8))
+    story.append(
+        Paragraph(
+            "Generated locally by LedgerFlow · SA support workpaper · Not a SARS eFiling form",
+            note_st,
+        )
+    )
+    doc.build(story)
+    return buffer.getvalue()

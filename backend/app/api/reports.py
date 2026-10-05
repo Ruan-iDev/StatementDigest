@@ -8,13 +8,20 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_active_profile, get_active_profile_id
 from app.models import UserProfile
-from app.schemas import BudgetMatrixReport, MonthlyComparisonReport, PLMatrixReport, PLReport
+from app.schemas import (
+    BudgetMatrixReport,
+    MonthlyComparisonReport,
+    PLMatrixReport,
+    PLReport,
+    SaReportCatalogItem,
+    SaSupportReport,
+)
 from app.services.letterhead import letterhead_from_profile
 from app.services.pdf_report import (
     generate_monthly_overview_pdf,
     generate_period_report_pdf,
     generate_pl_matrix_pdf,
-    generate_pl_pdf,
+    generate_sa_support_pdf,
 )
 from app.services.reports import (
     build_budget_matrix,
@@ -22,8 +29,42 @@ from app.services.reports import (
     build_pl_matrix,
     build_pl_report,
 )
+from app.services.sa_tax_reports import (
+    REPORT_BUILDERS,
+    build_capital_schedule,
+    build_cashflow_indirect,
+    build_consolidation_stub,
+    build_fy_pack,
+    build_general_ledger,
+    build_interest_summary,
+    build_irp5_emp201_stub,
+    build_medical_credit,
+    build_provisional_tax,
+    build_related_party,
+    build_taxable_income,
+    build_travel_motor,
+    build_trial_balance,
+    build_vat_201,
+    report_catalog,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+def _sa_params(
+    fy_start_year: Optional[int],
+    period: str,
+    date_from: Optional[date],
+    date_to: Optional[date],
+    ref: Optional[date],
+) -> dict:
+    return {
+        "fy_start_year": fy_start_year,
+        "period": period,
+        "date_from": date_from,
+        "date_to": date_to,
+        "ref": ref,
+    }
 
 
 @router.get("/pl", response_model=PLReport)
@@ -225,4 +266,343 @@ def monthly_comparison_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── SA tax & accounting support reports ───────────────────────────────────
+
+
+@router.get("/catalog", response_model=list[SaReportCatalogItem])
+def sa_report_catalog():
+    """List SA support reports (individual / companies / cross-cutting)."""
+    return [SaReportCatalogItem(**item) for item in report_catalog()]
+
+
+@router.get("/taxable-income", response_model=SaSupportReport)
+def taxable_income_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_taxable_income(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/interest-summary", response_model=SaSupportReport)
+def interest_summary_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_interest_summary(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/medical-credit", response_model=SaSupportReport)
+def medical_credit_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_medical_credit(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/travel-motor", response_model=SaSupportReport)
+def travel_motor_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_travel_motor(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/capital-schedule", response_model=SaSupportReport)
+def capital_schedule_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_capital_schedule(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/provisional-tax", response_model=SaSupportReport)
+def provisional_tax_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_provisional_tax(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/vat-201", response_model=SaSupportReport)
+def vat_201_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_vat_201(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/irp5-emp201", response_model=SaSupportReport)
+def irp5_emp201_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_irp5_emp201_stub(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/related-party", response_model=SaSupportReport)
+def related_party_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_related_party(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/trial-balance", response_model=SaSupportReport)
+def trial_balance_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_trial_balance(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/general-ledger", response_model=SaSupportReport)
+def general_ledger_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    ledger_id: Optional[int] = Query(None, description="Optional single ledger focus"),
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_general_ledger(
+        db,
+        profile_id,
+        ledger_id=ledger_id,
+        **_sa_params(fy_start_year, period, date_from, date_to, ref),
+    )
+
+
+@router.get("/cashflow-indirect", response_model=SaSupportReport)
+def cashflow_indirect_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_cashflow_indirect(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
+
+
+@router.get("/fy-pack", response_model=SaSupportReport)
+def fy_pack_report(
+    fy_start_year: Optional[int] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_fy_pack(db, profile_id, fy_start_year=fy_start_year, ref=ref)
+
+
+@router.get("/consolidation", response_model=SaSupportReport)
+def consolidation_report(
+    fy_start_year: Optional[int] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_consolidation_stub(db, profile_id, fy_start_year=fy_start_year, ref=ref)
+
+
+@router.get("/sa/{report_key}/pdf")
+def sa_support_pdf(
+    report_key: str,
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    ledger_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    """PDF export for any SA support report key."""
+    key = (report_key or "").strip().lower()
+    builder = REPORT_BUILDERS.get(key)
+    if not builder:
+        return Response(content=b"Unknown report", status_code=404)
+    kwargs = _sa_params(fy_start_year, period, date_from, date_to, ref)
+    if key == "general-ledger":
+        report = builder(db, profile.id, ledger_id=ledger_id, **kwargs)
+    elif key in ("fy-pack", "consolidation"):
+        report = builder(db, profile.id, fy_start_year=fy_start_year, ref=ref)
+    else:
+        report = builder(db, profile.id, **kwargs)
+    lh = letterhead_from_profile(profile)
+    pdf_bytes = generate_sa_support_pdf(report, letterhead=lh)
+    safe = report.title.replace(" ", "_").replace("/", "-")
+    filename = f"{safe}_{report.date_from}_{report.date_to}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# Convenience aliases for priority PDFs
+@router.get("/trial-balance/pdf")
+def trial_balance_pdf(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    return sa_support_pdf(
+        "trial-balance",
+        fy_start_year,
+        period,
+        date_from,
+        date_to,
+        ref,
+        None,
+        db,
+        profile,
+    )
+
+
+@router.get("/related-party/pdf")
+def related_party_pdf(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    return sa_support_pdf(
+        "related-party",
+        fy_start_year,
+        period,
+        date_from,
+        date_to,
+        ref,
+        None,
+        db,
+        profile,
+    )
+
+
+@router.get("/interest-summary/pdf")
+def interest_summary_pdf(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    return sa_support_pdf(
+        "interest-summary",
+        fy_start_year,
+        period,
+        date_from,
+        date_to,
+        ref,
+        None,
+        db,
+        profile,
+    )
+
+
+@router.get("/taxable-income/pdf")
+def taxable_income_pdf(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    return sa_support_pdf(
+        "taxable-income",
+        fy_start_year,
+        period,
+        date_from,
+        date_to,
+        ref,
+        None,
+        db,
+        profile,
+    )
+
+
+@router.get("/fy-pack/pdf")
+def fy_pack_pdf(
+    fy_start_year: Optional[int] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile: UserProfile = Depends(get_active_profile),
+):
+    return sa_support_pdf(
+        "fy-pack",
+        fy_start_year,
+        "financial_year",
+        None,
+        None,
+        ref,
+        None,
+        db,
+        profile,
     )

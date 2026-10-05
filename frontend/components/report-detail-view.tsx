@@ -10,7 +10,7 @@ import {
   type PLReport,
 } from "@/lib/api";
 import { cn, formatMoney } from "@/lib/utils";
-import type { ReportKey, ReportMeta } from "@/lib/reports-meta";
+import type { ClassicReportKey, ReportMeta } from "@/lib/reports-meta";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,7 +52,7 @@ function monthEnd(ym: string): string {
 }
 
 type Props = {
-  reportKey: ReportKey;
+  reportKey: ClassicReportKey;
   meta: ReportMeta;
 };
 

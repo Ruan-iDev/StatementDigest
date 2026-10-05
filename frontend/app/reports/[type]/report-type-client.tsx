@@ -2,8 +2,15 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { getReportMeta, type ReportKey, REPORT_KEYS } from "@/lib/reports-meta";
+import {
+  getReportMeta,
+  type ReportKey,
+  REPORT_KEYS,
+  isSaReportKey,
+  type SaReportKey,
+} from "@/lib/reports-meta";
 import { ReportDetailView } from "@/components/report-detail-view";
+import { SaReportView } from "@/components/sa-report-view";
 
 function isReportKey(v: string): v is ReportKey {
   return (REPORT_KEYS as string[]).includes(v);
@@ -30,6 +37,10 @@ export default function ReportTypeClient() {
   const meta = getReportMeta(type);
   if (!meta) {
     return null;
+  }
+
+  if (isSaReportKey(type)) {
+    return <SaReportView reportKey={type as SaReportKey} meta={meta} />;
   }
 
   return <ReportDetailView reportKey={type} meta={meta} />;

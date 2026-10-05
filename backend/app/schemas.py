@@ -579,3 +579,63 @@ class DashboardStats(BaseModel):
     recent_batches: list[ImportBatchOut]
     income_mtd: Decimal
     expenses_mtd: Decimal
+
+
+# ── SA tax / accounting support reports ───────────────────────────────────
+
+
+class SaReportTxnLine(BaseModel):
+    transaction_id: int
+    date: date
+    description: str
+    amount: Decimal
+    ledger_id: Optional[int] = None
+    ledger_name: Optional[str] = None
+    reference: Optional[str] = None
+    source_file: Optional[str] = None
+    drill_ledger_id: Optional[int] = None
+    running_balance: Optional[Decimal] = None
+
+
+class SaReportLedgerLine(BaseModel):
+    ledger_id: int
+    ledger_name: str
+    ledger_type: str
+    amount: Decimal
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+    txn_count: int = 0
+    note: Optional[str] = None
+
+
+class SaReportSection(BaseModel):
+    key: str
+    title: str
+    kind: str  # totals | transactions | summary | placeholder
+    lines: list[SaReportLedgerLine] = Field(default_factory=list)
+    transactions: list[SaReportTxnLine] = Field(default_factory=list)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    stub_message: Optional[str] = None
+
+
+class SaSupportReport(BaseModel):
+    """SA management / tax support workpaper (not an eFiling form)."""
+
+    report_key: str
+    title: str
+    period_label: str
+    date_from: date
+    date_to: date
+    currency: str
+    status: str  # live | partial | stub
+    notes: list[str] = Field(default_factory=list)
+    available_years: list[FinancialYearOption] = Field(default_factory=list)
+    sections: list[SaReportSection] = Field(default_factory=list)
+    totals: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class SaReportCatalogItem(BaseModel):
+    key: str
+    title: str
+    group: str
+    status: str
