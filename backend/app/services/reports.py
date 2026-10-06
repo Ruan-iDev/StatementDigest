@@ -222,6 +222,7 @@ def build_pl_report(
         func.sum(Transaction.amount).label("total"),
     ).filter(
         Transaction.is_categorised.is_(True),
+        Transaction.is_excluded.is_(False),
         Transaction.ledger_id.isnot(None),
         Transaction.date >= d_from,
         Transaction.date <= d_to,
@@ -368,6 +369,7 @@ def _month_totals(
         func.sum(Transaction.amount).label("total"),
     ).filter(
         Transaction.is_categorised.is_(True),
+        Transaction.is_excluded.is_(False),
         Transaction.ledger_id.isnot(None),
         Transaction.date >= d_from,
         Transaction.date <= d_to,
@@ -422,6 +424,7 @@ def list_financial_years(
 
     tq = db.query(func.min(Transaction.date), func.max(Transaction.date)).filter(
         Transaction.is_categorised.is_(True),
+        Transaction.is_excluded.is_(False),
     )
     if user_profile_id is not None:
         tq = tq.filter(Transaction.user_profile_id == user_profile_id)
@@ -441,6 +444,7 @@ def list_financial_years(
         # has_data: any categorised tx in range
         cq = db.query(func.count(Transaction.id)).filter(
             Transaction.is_categorised.is_(True),
+            Transaction.is_excluded.is_(False),
             Transaction.date >= start,
             Transaction.date <= end,
         )
@@ -517,6 +521,7 @@ def build_pl_matrix(
         func.sum(Transaction.amount).label("total"),
     ).filter(
         Transaction.is_categorised.is_(True),
+        Transaction.is_excluded.is_(False),
         Transaction.ledger_id.isnot(None),
         Transaction.date >= d_from,
         Transaction.date <= d_to,
@@ -608,6 +613,7 @@ def build_pl_matrix(
         start, end = opt.date_from, opt.date_to
         cq = db.query(func.count(Transaction.id)).filter(
             Transaction.is_categorised.is_(True),
+            Transaction.is_excluded.is_(False),
             Transaction.date >= start,
             Transaction.date <= end,
         )
@@ -714,6 +720,7 @@ def build_budget_matrix(
         func.sum(Transaction.amount).label("total"),
     ).filter(
         Transaction.is_categorised.is_(True),
+        Transaction.is_excluded.is_(False),
         Transaction.ledger_id.isnot(None),
         Transaction.date >= d_from,
         Transaction.date <= d_to,
@@ -810,6 +817,7 @@ def build_budget_matrix(
     for opt in all_years:
         cq = db.query(func.count(Transaction.id)).filter(
             Transaction.is_categorised.is_(True),
+            Transaction.is_excluded.is_(False),
             Transaction.date >= opt.date_from,
             Transaction.date <= opt.date_to,
         )

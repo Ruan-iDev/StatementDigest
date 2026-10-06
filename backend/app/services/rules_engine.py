@@ -25,6 +25,18 @@ def transaction_matches_rule(tx: Transaction, rule: Rule) -> bool:
     desc_l = desc.lower()
     value = (rule.match_value or "").strip()
     mj = rule.match_json or {}
+    if not isinstance(mj, dict):
+        mj = {}
+
+    # Optional account scope (any match type): match_json.bank_account_ids = [ids].
+    scope = mj.get("bank_account_ids")
+    if scope:
+        try:
+            allowed = {int(x) for x in (scope if isinstance(scope, (list, tuple, set)) else [scope])}
+        except (TypeError, ValueError):
+            return False
+        if tx.bank_account_id not in allowed:
+            return False
 
     if match_type == "contains":
         return bool(value) and value.lower() in desc_l
@@ -56,7 +68,8 @@ def transaction_matches_rule(tx: Transaction, rule: Rule) -> bool:
             return False
 
     if match_type == "combination":
-        # match_json: { "contains": "...", "amount_min": ..., "amount_max": ..., "exact": "..." }
+        # match_json: { "contains": "...", "regex": "...", "amount_min": ..., "amount_max": ...,
+        #               "exact": "...", "bank_account_ids": [..] }
         ok = True
         if "contains" in mj and mj["contains"]:
             ok = ok and str(mj["contains"]).lower() in desc_l
