@@ -270,6 +270,8 @@ class LedgerOut(ORMModel):
     budget_monthly: Optional[Decimal]
     budget_annual: Optional[Decimal]
     sort_order: int
+    # Engine-owned ledgers (bank_account, opening_equity, …) — not for categorising
+    system_role: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -407,6 +409,13 @@ class ImportBatchOut(ORMModel):
     transaction_count: int
     error_message: Optional[str]
     bank_profile_name: Optional[str] = None
+    # Double-entry: real account + printed statement header
+    bank_account_id: Optional[int] = None
+    account_number: Optional[str] = None
+    statement_opening: Optional[Decimal] = None
+    statement_closing: Optional[Decimal] = None
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
 
 
 class ImportResult(BaseModel):
@@ -595,6 +604,11 @@ class SaReportTxnLine(BaseModel):
     source_file: Optional[str] = None
     drill_ledger_id: Optional[int] = None
     running_balance: Optional[Decimal] = None
+    # Double-entry GL: debit/credit split + the contra ledger(s) of the journal entry
+    debit: Optional[Decimal] = None
+    credit: Optional[Decimal] = None
+    counter_ledger: Optional[str] = None
+    entry_kind: Optional[str] = None
 
 
 class SaReportLedgerLine(BaseModel):
@@ -616,6 +630,9 @@ class SaReportSection(BaseModel):
     transactions: list[SaReportTxnLine] = Field(default_factory=list)
     summary: dict[str, Any] = Field(default_factory=dict)
     stub_message: Optional[str] = None
+    # Generic table (bank reconciliation, pairing lists…): header + string/number cells
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
 
 
 class SaSupportReport(BaseModel):
@@ -632,6 +649,32 @@ class SaSupportReport(BaseModel):
     available_years: list[FinancialYearOption] = Field(default_factory=list)
     sections: list[SaReportSection] = Field(default_factory=list)
     totals: dict[str, Decimal] = Field(default_factory=dict)
+
+
+class BankAccountOut(BaseModel):
+    id: int
+    account_number: str
+    name: str
+    bank_name: Optional[str] = None
+    product: Optional[str] = None
+    account_kind: str
+    ledger_id: Optional[int] = None
+    ledger_name: Optional[str] = None
+    bank_profile_id: Optional[int] = None
+    opening_balance: Optional[Decimal] = None
+    opening_date: Optional[date] = None
+    opening_source: Optional[str] = None
+    statements: int = 0
+    transactions: int = 0
+    first_period_start: Optional[date] = None
+    last_period_end: Optional[date] = None
+    last_printed_closing: Optional[Decimal] = None
+    ledger_balance: Optional[Decimal] = None
+
+
+class BankAccountUpdate(BaseModel):
+    name: Optional[str] = None
+    account_kind: Optional[str] = None  # asset | liability
 
 
 class SaReportCatalogItem(BaseModel):

@@ -10,7 +10,9 @@ from app.api.disclaimers import require_recent_upload_acceptance
 from app.deps import get_active_profile_id
 from app.models import BankProfile, ImportBatch, ImportStatus, Transaction
 from app.schemas import ImportBatchOut, ImportResult
+from app.services.bank_accounts import apply_meta_to_batch, ensure_system_ledgers, refresh_openings
 from app.services.capitec_fees import apply_capitec_fees_to_bank_ledger
+from app.services.statement_meta import meta_from_pdf_bytes
 from app.services.parsers import parse_statement
 from app.services.rules_engine import apply_rules_to_transactions
 from app.services.training import should_skip_description
@@ -28,6 +30,12 @@ def _batch_out(batch: ImportBatch) -> ImportBatchOut:
         transaction_count=batch.transaction_count,
         error_message=batch.error_message,
         bank_profile_name=batch.bank_profile.name if batch.bank_profile else None,
+        bank_account_id=batch.bank_account_id,
+        account_number=batch.account_number,
+        statement_opening=batch.statement_opening,
+        statement_closing=batch.statement_closing,
+        period_start=batch.period_start,
+        period_end=batch.period_end,
     )
 
 
@@ -233,6 +241,23 @@ async def upload_statement(
             db.commit()
             # Include newly created fee lines in rule target list is unnecessary
             # (they are already categorised). Rules only touch uncategorised.
+
+        # Double-entry: link the statement to its real bank account (account
+        # number + printed opening/closing from the header). Never fails the import.
+        try:
+            meta = meta_from_pdf_bytes(content, profile.bank_type) if ext == ".pdf" else None
+            batch.source_upload = dest_name
+            ensure_system_ledgers(db, user_profile_id)
+            apply_meta_to_batch(db, batch, meta, meta_source="pdf_header", bank_profile=profile)
+            refresh_openings(db, user_profile_id)
+            db.commit()
+        except Exception as link_exc:  # noqa: BLE001
+            db.rollback()
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "bank account linking failed for batch %s: %s", batch.id, link_exc
+            )
 
         # Live-apply existing rules to new imports
         rules_applied = apply_rules_to_transactions(db, created_ids) if created_ids else 0

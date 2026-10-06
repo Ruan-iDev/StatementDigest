@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import (
     auth,
+    bank_accounts,
     bank_profiles,
     disclaimers,
     imports,
@@ -155,6 +156,7 @@ app.include_router(local_data.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(ledgers.router, prefix="/api")
 app.include_router(bank_profiles.router, prefix="/api")
+app.include_router(bank_accounts.router, prefix="/api")
 app.include_router(imports.router, prefix="/api")
 app.include_router(transactions.router, prefix="/api")
 app.include_router(rules.router, prefix="/api")

@@ -206,7 +206,11 @@ def create_profile(
             raise HTTPException(400, "Source profile for ledgers not found")
         src_ledgers = (
             db.query(Ledger)
-            .filter(Ledger.user_profile_id == src.id, Ledger.is_archived.is_(False))
+            .filter(
+                Ledger.user_profile_id == src.id,
+                Ledger.is_archived.is_(False),
+                Ledger.system_role.is_(None),  # bank/equity ledgers are per-profile
+            )
             .order_by(Ledger.sort_order.asc(), Ledger.id.asc())
             .all()
         )

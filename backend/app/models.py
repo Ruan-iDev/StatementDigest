@@ -42,6 +42,22 @@ class LedgerType(str, enum.Enum):
     TRANSFER = "transfer"
     CAPITAL = "capital"
     OTHER = "other"
+    # Double-entry balance-sheet ledgers (bank accounts, loans, owner's equity)
+    ASSET = "asset"
+    LIABILITY = "liability"
+    EQUITY = "equity"
+
+
+class LedgerSystemRole(str, enum.Enum):
+    """Ledgers the double-entry engine owns (never offered for categorisation)."""
+
+    BANK_ACCOUNT = "bank_account"  # one per real bank / loan account
+    OPENING_EQUITY = "opening_equity"
+    RETAINED_EARNINGS = "retained_earnings"
+    DRAWINGS_BF = "drawings_bf"
+    TRANSFER_IN_TRANSIT = "transfer_in_transit"
+    BANK_REC_SUSPENSE = "bank_rec_suspense"
+    UNCATEGORISED = "uncategorised"
 
 
 class MatchType(str, enum.Enum):
@@ -148,6 +164,8 @@ class Ledger(Base):
     budget_monthly: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
     budget_annual: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # Double-entry: set for engine-owned ledgers (see LedgerSystemRole)
+    system_role: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -173,6 +191,19 @@ class ImportBatch(Base):
     status: Mapped[str] = mapped_column(String(50), default=ImportStatus.PENDING.value)
     transaction_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Double-entry: which real bank account this statement belongs to + printed header
+    bank_account_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("bank_accounts.id"), nullable=True, index=True
+    )
+    account_number: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    statement_opening: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    statement_closing: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    period_start: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    period_end: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    # Stored upload file name under data/uploads (lets us re-read the header later)
+    source_upload: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # pdf_header | running_balance | filename | bank_profile_default
+    meta_source: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
 
     user_profile: Mapped["UserProfile"] = relationship(back_populates="import_batches")
     bank_profile: Mapped["BankProfile"] = relationship(back_populates="import_batches")
@@ -207,6 +238,10 @@ class Transaction(Base):
     import_batch_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("import_batches.id"), nullable=True
     )
+    # Double-entry: the real bank account (asset/liability ledger) this line hit
+    bank_account_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("bank_accounts.id"), nullable=True, index=True
+    )
     # Dev / self-train: mark parser mistakes (ghost lines, wrong amounts, etc.)
     is_excluded: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     training_reason: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
@@ -219,6 +254,47 @@ class Transaction(Base):
     ledger: Mapped[Optional["Ledger"]] = relationship(back_populates="transactions")
     import_batch: Mapped[Optional["ImportBatch"]] = relationship(back_populates="transactions")
     rule: Mapped[Optional["Rule"]] = relationship(back_populates="applied_transactions")
+
+
+class BankAccount(Base):
+    """A real bank / card / loan account — the bank side of every transaction.
+
+    Identity comes from the statement (account number in the PDF header or the
+    import file name), *not* from BankProfile: one bank profile (parser
+    calibration) can import statements for many accounts.
+    """
+
+    __tablename__ = "bank_accounts"
+    __table_args__ = (
+        UniqueConstraint("user_profile_id", "account_number", name="uq_bank_account_profile_number"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_profiles.id"), nullable=False, index=True
+    )
+    bank_profile_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("bank_profiles.id"), nullable=True
+    )
+    account_number: Mapped[str] = mapped_column(String(40), nullable=False)
+    bank_name: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    product: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Display name (user-editable, e.g. "iDesign – Gold Business")
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # asset (bank / savings / card in credit) | liability (loan, credit card)
+    account_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="asset")
+    ledger_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("ledgers.id"), nullable=True
+    )
+    # Printed opening balance of the earliest statement (signed; overdrawn/loan < 0)
+    opening_balance: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), nullable=True)
+    opening_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    opening_source: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class TrainingReason(Base):

@@ -210,6 +210,58 @@ def migrate_schema(engine) -> None:
                     )
                 )
 
+        # Double-entry bookkeeping (bank accounts as ledgers)
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS bank_accounts (
+                    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    user_profile_id INTEGER NOT NULL,
+                    bank_profile_id INTEGER,
+                    account_number VARCHAR(40) NOT NULL,
+                    bank_name VARCHAR(80),
+                    product VARCHAR(200),
+                    name VARCHAR(200) NOT NULL,
+                    account_kind VARCHAR(20) NOT NULL DEFAULT 'asset',
+                    ledger_id INTEGER,
+                    opening_balance NUMERIC(18, 2),
+                    opening_date DATE,
+                    opening_source VARCHAR(500),
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME,
+                    updated_at DATETIME,
+                    CONSTRAINT uq_bank_account_profile_number UNIQUE (user_profile_id, account_number)
+                )
+                """
+            )
+        )
+        if _table_exists(conn, "ledgers") and "system_role" not in _columns(conn, "ledgers"):
+            conn.execute(text("ALTER TABLE ledgers ADD COLUMN system_role VARCHAR(40)"))
+        if _table_exists(conn, "import_batches"):
+            cols = _columns(conn, "import_batches")
+            for name, ddl in (
+                ("bank_account_id", "INTEGER"),
+                ("account_number", "VARCHAR(40)"),
+                ("statement_opening", "NUMERIC(18, 2)"),
+                ("statement_closing", "NUMERIC(18, 2)"),
+                ("period_start", "DATE"),
+                ("period_end", "DATE"),
+                ("source_upload", "VARCHAR(500)"),
+                ("meta_source", "VARCHAR(40)"),
+            ):
+                if name not in cols:
+                    conn.execute(text(f"ALTER TABLE import_batches ADD COLUMN {name} {ddl}"))
+        if _table_exists(conn, "transactions") and "bank_account_id" not in _columns(
+            conn, "transactions"
+        ):
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN bank_account_id INTEGER"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_transactions_bank_account_id "
+                "ON transactions (bank_account_id)"
+            )
+        )
+
         conn.execute(
             text(
                 """

@@ -39,6 +39,7 @@ def _to_out(ledger: Ledger, by_id: dict[int, Ledger]) -> LedgerOut:
         budget_monthly=ledger.budget_monthly,
         budget_annual=ledger.budget_annual,
         sort_order=ledger.sort_order,
+        system_role=ledger.system_role,
         created_at=ledger.created_at,
         updated_at=ledger.updated_at,
     )
@@ -184,6 +185,10 @@ def archive_ledger(
     ledger = db.get(Ledger, ledger_id)
     if not ledger or ledger.user_profile_id != profile_id:
         raise HTTPException(404, "Ledger not found")
+    if ledger.system_role:
+        raise HTTPException(
+            400, "This ledger is owned by double-entry bookkeeping (bank/equity/suspense) and cannot be archived"
+        )
     ledger.is_archived = True
     db.commit()
     db.refresh(ledger)
