@@ -233,6 +233,17 @@ def compute_balance_sheet(books: Books, as_at: date, fy_start: date) -> dict[str
     groups: dict[str, list[tuple[LedgerInfo, Decimal, Optional[str]]]] = defaultdict(list)
     for lg in sorted(books.ledgers.values(), key=lambda l: (l.sort_order, l.name.lower())):
         v = get(lg.id)
+        if lg.cls in (CLS_ASSET, CLS_LIABILITY) and not lg.bank_account_id:
+            # Non-bank asset / liability ledgers (loans owed, director's loan account):
+            # presented on the side their balance falls (a DLA can flip).
+            if v > 0:
+                groups["asset_other"].append((lg, v, "debit balance" if lg.cls == CLS_LIABILITY else None))
+            elif v < 0:
+                if lg.cls == CLS_ASSET:
+                    groups["liab_other"].append((lg, -v, "credit balance"))
+                else:
+                    groups["liab_loans"].append((lg, -v, None))
+            continue
         if lg.cls == CLS_BANK or lg.cls in (CLS_ASSET, CLS_LIABILITY):
             acct = books.accounts.get(lg.bank_account_id) if lg.bank_account_id else None
             is_liab = (acct and acct.kind == LedgerType.LIABILITY.value) or lg.cls == CLS_LIABILITY
@@ -262,8 +273,10 @@ def compute_balance_sheet(books: Books, as_at: date, fy_start: date) -> dict[str
     re_bf = _q(-sum((before.get(i, ZERO) for i in pl_ids), ZERO))
     net_cur = _q(-sum((bal.get(i, ZERO) for i in pl_ids), ZERO) - re_bf)
     sum_ = lambda k: _q(sum((v for _, v, _ in groups.get(k, [])), ZERO))  # noqa: E731
-    total_assets = sum_("asset_bank") + sum_("asset_capital") + sum_("asset_clearing")
-    total_liab = sum_("liab_overdraft") + sum_("liab_loans") + sum_("liab_loan_capital") + sum_("liab_clearing")
+    total_assets = sum_("asset_bank") + sum_("asset_capital") + sum_("asset_other") + sum_("asset_clearing")
+    total_liab = (
+        sum_("liab_overdraft") + sum_("liab_loans") + sum_("liab_loan_capital") + sum_("liab_other") + sum_("liab_clearing")
+    )
     total_equity = sum_("equity_other") + re_bf + net_cur + sum_("equity_drawings")
     return {
         "groups": groups,
@@ -326,9 +339,11 @@ def build_balance_sheet(
     sections = [
         mk("assets-bank", "Assets · Bank accounts", g.get("asset_bank", [])),
         mk("assets-capital", "Assets · Capital items", g.get("asset_capital", [])),
+        mk("assets-other", "Assets · Loans receivable & director's loan (debit balances)", g.get("asset_other", [])),
         mk("assets-clearing", "Assets · Transfer clearing / suspense (debit balances)", g.get("asset_clearing", [])),
         mk("liab-overdraft", "Liabilities · Bank overdrafts", g.get("liab_overdraft", [])),
         mk("liab-loans", "Liabilities · Loans", g.get("liab_loans", []) + g.get("liab_loan_capital", [])),
+        mk("liab-other", "Liabilities · Director's loan & other (credit balances)", g.get("liab_other", [])),
         mk("liab-clearing", "Liabilities · Transfer clearing (credit balances – unpaired inflows)", g.get("liab_clearing", [])),
         mk("equity", "Equity", g.get("equity_other", []), eq_extra),
         mk("equity-drawings", "Equity · Owner's drawings & personal (cumulative, reduces equity)", g.get("equity_drawings", [])),
@@ -345,7 +360,9 @@ def build_balance_sheet(
         years=years,
         notes=[
             "Assets = Liabilities + Equity, from the double-entry journal (bank balances match printed statements).",
-            "Overdrawn bank accounts are shown as liabilities; the FNB personal loan is a liability ledger.",
+            "Overdrawn bank accounts are shown as liabilities; loans are liability ledgers (openings from evidence-based journals).",
+            "Director's loan account: personal side (receipts from the company) and iDesign side (tracked company legs) – "
+            "each shown on the side its balance falls; where both legs are tracked they eliminate.",
             "Transfer clearing holds unpaired own-account transfer legs (other side not tracked in this profile).",
             "Capital items are at cost (no depreciation). Drawings, income tax and personal spend reduce equity.",
         ],
@@ -438,7 +455,8 @@ def build_bank_reconciliation(
                 f"{st.period_start.isoformat() if st.period_start else '?'} → {st.period_end.isoformat() if st.period_end else '?'}"
             )
             if st.overlaps_previous:
-                per += " (overlaps previous)"
+                per += " (overlaps previous"
+                per += f"; {_s(st.overlap_movement)} already posted in overlap)" if st.overlap_movement else ")"
             row = [
                 st.filename,
                 per,
@@ -594,7 +612,7 @@ def build_general_ledger(
                     amount=_q(p.amount),
                     ledger_id=lg.id,
                     ledger_name=", ".join(contra) or None,
-                    source_file=e.source_file,
+                    source_file=e.source_file or (f"journal #{e.journal_id}: {e.source}"[:300] if e.journal_id else None),
                     drill_ledger_id=e.category_ledger_id,
                     running_balance=running,
                     debit=d if d else None,

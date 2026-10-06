@@ -329,9 +329,19 @@ def test_bot_pl_totals_unchanged(bot_session, bot_books):
             .all()
         )
         by = {t: Decimal(str(v)).quantize(Decimal("0.01")) for t, v in rows}
+        # evidence-based manual journals (e.g. loan interest true-ups) also hit the P&L
+        jl = (
+            bot_session.query(M.Ledger.type, func.sum(M.JournalLine.amount))
+            .join(M.JournalEntry, M.JournalEntry.id == M.JournalLine.journal_entry_id)
+            .join(M.Ledger, M.Ledger.id == M.JournalLine.ledger_id)
+            .filter(M.JournalEntry.user_profile_id == BOT_PROFILE, M.JournalEntry.date >= d_from, M.JournalEntry.date <= d_to)
+            .group_by(M.Ledger.type)
+            .all()
+        )
+        jby = {t: Decimal(str(v)).quantize(Decimal("0.01")) for t, v in jl}
         tb = compute_trial_balance(bot_books, d_from, d_to)
-        assert tb["income"] == by.get("income", Decimal("0.00")), fy
-        assert tb["expenses"] == -by.get("expense", Decimal("0.00")), fy
+        assert tb["income"] == by.get("income", Decimal("0.00")) - jby.get("income", Decimal("0.00")), fy
+        assert tb["expenses"] == -by.get("expense", Decimal("0.00")) + jby.get("expense", Decimal("0.00")), fy
 
 
 # ── corpus: header metadata agrees with the reconcile harness ───────────────

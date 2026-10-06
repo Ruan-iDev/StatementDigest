@@ -412,6 +412,48 @@ class Rule(Base):
     applied_transactions: Mapped[list["Transaction"]] = relationship(back_populates="rule")
 
 
+class JournalEntry(Base):
+    """Manual, evidence-based journal (double-entry adjustments that have no bank
+    line): loan openings at origination, balance checkpoints / true-ups,
+    director's-loan openings, settlements paid from untracked accounts.
+
+    Lines are debit-positive and must sum to 0.00; ``source`` cites the evidence.
+    """
+
+    __tablename__ = "journal_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_profile_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_profiles.id"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    # opening | checkpoint | settlement | placeholder | adjustment
+    kind: Mapped[str] = mapped_column(String(40), nullable=False, default="adjustment")
+    reference: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, index=True)
+    source: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_placeholder: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    lines: Mapped[list["JournalLine"]] = relationship(
+        back_populates="entry", cascade="all, delete-orphan", order_by="JournalLine.id"
+    )
+
+
+class JournalLine(Base):
+    __tablename__ = "journal_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    journal_entry_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("journal_entries.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ledger_id: Mapped[int] = mapped_column(Integer, ForeignKey("ledgers.id"), nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)  # debit-positive
+    memo: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+
+    entry: Mapped["JournalEntry"] = relationship(back_populates="lines")
+
+
 class AppSettings(Base):
     """Global app settings (active profile id, etc.). Per-profile prefs live on UserProfile."""
 

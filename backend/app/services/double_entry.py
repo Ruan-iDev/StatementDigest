@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     BankAccount,
     ImportBatch,
+    JournalEntry,
     Ledger,
     LedgerSystemRole,
     LedgerType,
@@ -109,7 +110,7 @@ class Posting:
 class Entry:
     id: int
     date: date
-    kind: str  # opening | bank_tx | transfer_leg | continuity
+    kind: str  # opening | bank_tx | transfer_leg | continuity | journal
     description: str
     postings: list[tuple[int, Decimal]]
     tx_id: Optional[int] = None
@@ -118,6 +119,9 @@ class Entry:
     source_file: Optional[str] = None
     category_ledger_id: Optional[int] = None
     pair_id: Optional[int] = None
+    journal_id: Optional[int] = None
+    journal_kind: Optional[str] = None
+    source: Optional[str] = None
 
 
 @dataclass
@@ -160,6 +164,10 @@ class StatementRec:
     tx_count: int
     ledger_closing: Decimal
     overlaps_previous: bool = False
+    # Movement already posted from earlier statements dated inside this
+    # statement's period (overlap / re-issued statement). The printed opening is
+    # compared with ledger_opening - overlap_movement.
+    overlap_movement: Decimal = ZERO
 
     @property
     def closing_difference(self) -> Optional[Decimal]:
@@ -171,7 +179,7 @@ class StatementRec:
     def opening_difference(self) -> Optional[Decimal]:
         if self.printed_opening is None:
             return None
-        return _d(self.printed_opening - self.ledger_opening)
+        return _d(self.printed_opening - (self.ledger_opening - self.overlap_movement))
 
     @property
     def status(self) -> str:
@@ -222,6 +230,7 @@ class Books:
     pairing: PairingStats
     statements: list[StatementRec]
     tx_count: int
+    journal_errors: list[int] = field(default_factory=list)  # unbalanced / foreign-ledger journals skipped
 
     # ── aggregation ─────────────────────────────────────────────────────────
     def _dates(self) -> list[date]:
@@ -350,11 +359,14 @@ def pair_transfers(
                     continue
                 gap = abs((i.date - o.date).days)
                 if gap <= window_days:
-                    cands.append((gap, o.date, o.id, i.id, o, i))
-    cands.sort(key=lambda c: c[:4])
+                    # prefer legs in the same transfer ledger (e.g. both 'Loan Repayment
+                    # Transfers') over a coincidental same-amount leg elsewhere
+                    same = 0 if o.ledger_id == i.ledger_id else 1
+                    cands.append((gap, same, o.date, o.id, i.id, o, i))
+    cands.sort(key=lambda c: c[:5])
     used: set[int] = set()
     pairs: list[TransferPair] = []
-    for _gap, _d0, oid, iid, o, i in cands:
+    for _gap, _same, _d0, oid, iid, o, i in cands:
         if oid in used or iid in used:
             continue
         used.add(oid)
@@ -499,6 +511,7 @@ def build_books(db: Session, user_profile_id: int, *, pair_window_days: int = PA
         pair_of[p.in_tx] = p
 
     entries: list[Entry] = []
+    journal_errors: list[int] = []
 
     def add(e: Entry) -> None:
         e.id = len(entries)
@@ -519,11 +532,13 @@ def build_books(db: Session, user_profile_id: int, *, pair_window_days: int = PA
     batch_sum: dict[int, Decimal] = defaultdict(lambda: ZERO)
     batch_cnt: dict[int, int] = defaultdict(int)
     batch_min: dict[int, date] = {}
+    batch_rows: dict[int, list[tuple[date, Decimal]]] = defaultdict(list)
     for t in txs:
         if t.batch_id is None:
             continue
         batch_sum[t.batch_id] += t.amount
         batch_cnt[t.batch_id] += 1
+        batch_rows[t.batch_id].append((t.date, t.amount))
         if t.batch_id not in batch_min or t.date < batch_min[t.batch_id]:
             batch_min[t.batch_id] = t.date
     by_acct: dict[int, list[ImportBatch]] = defaultdict(list)
@@ -564,12 +579,20 @@ def build_books(db: Session, user_profile_id: int, *, pair_window_days: int = PA
         running = opening
         prev_end: Optional[date] = None
         seen_printed = False
+        posted_rows: list[tuple[date, Decimal]] = []  # (date, amount) of earlier statements
         for b in stmts:
             ledger_open = running
             adj = ZERO
+            overlaps = bool(prev_end and b.period_start and b.period_start < prev_end)
+            # Overlapping / re-issued statement: its printed opening is the balance
+            # *before* period_start, so back out what earlier statements already
+            # posted on or after that date (duplicate rows must be excluded).
+            overlap_mv = (
+                _d(sum((amt for d, amt in posted_rows if d >= b.period_start), ZERO)) if overlaps else ZERO
+            )
             if b.statement_opening is not None:
                 if seen_printed:
-                    adj = _d(_d(b.statement_opening) - running)
+                    adj = _d(_d(b.statement_opening) - (running - overlap_mv))
                 seen_printed = True
             if adj != 0:
                 adj_date = min(d for d in (b.period_start, batch_min.get(b.id)) if d) if (b.period_start or batch_min.get(b.id)) else (prev_end or date.today())
@@ -580,7 +603,7 @@ def build_books(db: Session, user_profile_id: int, *, pair_window_days: int = PA
                         kind="continuity",
                         description=(
                             f"Statement continuity difference – {acct.name}: printed opening "
-                            f"{_d(b.statement_opening)} vs ledger {ledger_open} ({b.filename})"
+                            f"{_d(b.statement_opening)} vs ledger {_d(ledger_open - overlap_mv)} ({b.filename})"
                         ),
                         postings=[(acct.ledger_id, adj), (suspense, -adj)],
                         bank_account_id=acct_id,
@@ -605,9 +628,11 @@ def build_books(db: Session, user_profile_id: int, *, pair_window_days: int = PA
                     movement=mv,
                     tx_count=batch_cnt.get(b.id, 0),
                     ledger_closing=running,
-                    overlaps_previous=bool(prev_end and b.period_start and b.period_start < prev_end),
+                    overlaps_previous=overlaps,
+                    overlap_movement=overlap_mv,
                 )
             )
+            posted_rows.extend(batch_rows.get(b.id, []))
             if b.period_end:
                 prev_end = b.period_end if prev_end is None else max(prev_end, b.period_end)
 
@@ -653,6 +678,30 @@ def build_books(db: Session, user_profile_id: int, *, pair_window_days: int = PA
             )
         )
 
+    # Manual, evidence-based journals (loan openings, checkpoints, DLA, ...)
+    for je in (
+        db.query(JournalEntry)
+        .filter(JournalEntry.user_profile_id == user_profile_id)
+        .order_by(JournalEntry.date, JournalEntry.id)
+        .all()
+    ):
+        lines = [(ln.ledger_id, _d(ln.amount)) for ln in je.lines if ln.ledger_id in ledgers]
+        if len(lines) != len(je.lines) or sum((a for _, a in lines), ZERO) != 0:
+            journal_errors.append(je.id)
+            continue
+        add(
+            Entry(
+                id=0,
+                date=je.date,
+                kind="journal",
+                description=je.description,
+                postings=lines,
+                journal_id=je.id,
+                journal_kind=je.kind,
+                source=je.source,
+            )
+        )
+
     postings = [
         Posting(date=e.date, ledger_id=lid, amount=amt, entry_id=e.id)
         for e in entries
@@ -671,4 +720,5 @@ def build_books(db: Session, user_profile_id: int, *, pair_window_days: int = PA
         pairing=pairing,
         statements=statements,
         tx_count=len(txs),
+        journal_errors=journal_errors,
     )
