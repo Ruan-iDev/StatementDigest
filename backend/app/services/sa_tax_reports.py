@@ -968,80 +968,12 @@ def build_trial_balance(
     date_to: Optional[date] = None,
     ref: Optional[date] = None,
 ) -> SaSupportReport:
-    d_from, d_to, label, _, years = _resolve_fy_or_period(
-        db,
-        user_profile_id=user_profile_id,
-        fy_start_year=fy_start_year,
-        period=period,
-        date_from=date_from,
-        date_to=date_to,
-        ref=ref,
-    )
-    currency = profile_pref(db, user_profile_id, "currency", "ZAR")
-    ledgers = _ledgers(db, user_profile_id)
-    totals_map = _ledger_totals(db, user_profile_id, d_from, d_to)
-    lines: list[SaReportLedgerLine] = []
-    total_debit = ZERO
-    total_credit = ZERO
-    for lg in ledgers:
-        raw = totals_map.get(lg.id, ZERO)
-        if raw == 0:
-            continue
-        # Bank convention: positive = inflow (credit-ish for income), negative = outflow
-        if lg.type == LedgerType.INCOME.value:
-            debit, credit = ZERO, _q(raw if raw > 0 else abs(raw))
-            if raw < 0:
-                debit, credit = _q(abs(raw)), ZERO
-        elif lg.type in (
-            LedgerType.EXPENSE.value,
-            LedgerType.CAPITAL.value,
-        ):
-            debit, credit = _q(abs(raw)), ZERO
-            if raw > 0:
-                debit, credit = ZERO, _q(raw)
-        elif lg.type == LedgerType.TRANSFER.value:
-            if raw >= 0:
-                debit, credit = ZERO, _q(raw)
-            else:
-                debit, credit = _q(abs(raw)), ZERO
-        else:
-            if raw >= 0:
-                debit, credit = ZERO, _q(raw)
-            else:
-                debit, credit = _q(abs(raw)), ZERO
-        total_debit += debit
-        total_credit += credit
-        lines.append(
-            SaReportLedgerLine(
-                ledger_id=lg.id,
-                ledger_name=lg.name,
-                ledger_type=lg.type,
-                amount=_q(raw),
-                debit=debit,
-                credit=credit,
-            )
-        )
-    return _base(
-        report_key="trial-balance",
-        title="Trial balance",
-        d_from=d_from,
-        d_to=d_to,
-        label=label,
-        currency=currency,
-        status="live",
-        years=years,
-        notes=[
-            "Cash-book style trial balance from categorised bank transactions.",
-            "Not a full double-entry TB — debit/credit mapped from ledger types.",
-        ],
-        sections=[
-            SaReportSection(key="tb", title="Trial balance", kind="totals", lines=lines),
-        ],
-        totals={
-            "total_debit": total_debit,
-            "total_credit": total_credit,
-            "difference": _q(total_debit - total_credit),
-        },
+    """Double-entry trial balance (see app.services.double_entry_reports)."""
+    from app.services.double_entry_reports import build_trial_balance as _tb
+
+    return _tb(
+        db, user_profile_id, fy_start_year=fy_start_year, period=period,
+        date_from=date_from, date_to=date_to, ref=ref,
     )
 
 
@@ -1055,71 +987,64 @@ def build_general_ledger(
     ref: Optional[date] = None,
     ledger_id: Optional[int] = None,
 ) -> SaSupportReport:
-    d_from, d_to, label, _, years = _resolve_fy_or_period(
-        db,
-        user_profile_id=user_profile_id,
-        fy_start_year=fy_start_year,
-        period=period,
-        date_from=date_from,
-        date_to=date_to,
-        ref=ref,
+    """Double-entry general ledger incl. bank ledgers with running balance."""
+    from app.services.double_entry_reports import build_general_ledger as _gl
+
+    return _gl(
+        db, user_profile_id, fy_start_year=fy_start_year, period=period,
+        date_from=date_from, date_to=date_to, ref=ref, ledger_id=ledger_id,
     )
-    currency = profile_pref(db, user_profile_id, "currency", "ZAR")
-    ledgers = _ledgers(db, user_profile_id)
-    if ledger_id is not None:
-        ledgers = [lg for lg in ledgers if lg.id == int(ledger_id)]
-    totals_map = _ledger_totals(db, user_profile_id, d_from, d_to)
-    # Only ledgers with activity (unless filtered to one)
-    active = [
-        lg
-        for lg in ledgers
-        if ledger_id is not None or totals_map.get(lg.id, ZERO) != 0
-    ]
-    sections: list[SaReportSection] = []
-    grand = ZERO
-    for lg in active[:80]:  # cap sections for response size
-        txns = _txns_for_ledgers(db, user_profile_id, d_from, d_to, [lg.id], limit=500)
-        running = ZERO
-        txn_lines: list[SaReportTxnLine] = []
-        for t in txns:
-            running = _q(running + _q(t.amount))
-            line = _txn_line(t, lg.name)
-            line = line.model_copy(update={"running_balance": running})
-            txn_lines.append(line)
-        amt = _q(totals_map.get(lg.id, ZERO))
-        grand += amt
-        sections.append(
-            SaReportSection(
-                key=f"lg-{lg.id}",
-                title=f"{lg.name} ({lg.type})",
-                kind="transactions",
-                lines=[
-                    SaReportLedgerLine(
-                        ledger_id=lg.id,
-                        ledger_name=lg.name,
-                        ledger_type=lg.type,
-                        amount=amt,
-                        txn_count=len(txns),
-                    )
-                ],
-                transactions=txn_lines,
-            )
-        )
-    return _base(
-        report_key="general-ledger",
-        title="General ledger",
-        d_from=d_from,
-        d_to=d_to,
-        label=label,
-        currency=currency,
-        status="live",
-        years=years,
-        notes=[
-            "Per-ledger transaction listing with running balance.",
-            "Pass ledger_id to focus on one account. Capped at 80 ledgers / 500 txns each.",
-        ],
-        sections=sections,
-        totals={"ledgers_listed": Decimal(len(sections)), "net_movement": _q(grand)},
+
+
+def build_balance_sheet(
+    db: Session,
+    user_profile_id: int,
+    fy_start_year: Optional[int] = None,
+    period: str = "financial_year",
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    as_at: Optional[date] = None,
+) -> SaSupportReport:
+    from app.services.double_entry_reports import build_balance_sheet as _bs
+
+    return _bs(
+        db, user_profile_id, fy_start_year=fy_start_year, period=period,
+        date_from=date_from, date_to=date_to, ref=ref, as_at=as_at,
+    )
+
+
+def build_bank_reconciliation(
+    db: Session,
+    user_profile_id: int,
+    fy_start_year: Optional[int] = None,
+    period: str = "financial_year",
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+) -> SaSupportReport:
+    from app.services.double_entry_reports import build_bank_reconciliation as _br
+
+    return _br(
+        db, user_profile_id, fy_start_year=fy_start_year, period=period,
+        date_from=date_from, date_to=date_to, ref=ref,
+    )
+
+
+def build_transfer_pairing(
+    db: Session,
+    user_profile_id: int,
+    fy_start_year: Optional[int] = None,
+    period: str = "financial_year",
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+) -> SaSupportReport:
+    from app.services.double_entry_reports import build_transfer_pairing as _tp
+
+    return _tp(
+        db, user_profile_id, fy_start_year=fy_start_year, period=period,
+        date_from=date_from, date_to=date_to, ref=ref,
     )
 
 
@@ -1237,6 +1162,8 @@ def build_fy_pack(
         ("vat-201", build_vat_201),
         ("related-party", build_related_party),
         ("trial-balance", build_trial_balance),
+        ("balance-sheet", build_balance_sheet),
+        ("bank-reconciliation", build_bank_reconciliation),
     ]
     sections: list[SaReportSection] = []
     for key, fn in builders:
@@ -1338,6 +1265,9 @@ REPORT_BUILDERS: dict[str, Any] = {
     "irp5-emp201": build_irp5_emp201_stub,
     "related-party": build_related_party,
     "trial-balance": build_trial_balance,
+    "balance-sheet": build_balance_sheet,
+    "bank-reconciliation": build_bank_reconciliation,
+    "transfer-pairing": build_transfer_pairing,
     "general-ledger": build_general_ledger,
     "cashflow-indirect": build_cashflow_indirect,
     "fy-pack": build_fy_pack,
@@ -1404,6 +1334,24 @@ def report_catalog() -> list[dict[str, str]]:
         {
             "key": "trial-balance",
             "title": "Trial balance",
+            "group": "companies",
+            "status": "live",
+        },
+        {
+            "key": "balance-sheet",
+            "title": "Balance sheet",
+            "group": "companies",
+            "status": "live",
+        },
+        {
+            "key": "bank-reconciliation",
+            "title": "Bank reconciliation",
+            "group": "companies",
+            "status": "live",
+        },
+        {
+            "key": "transfer-pairing",
+            "title": "Own-account transfer pairing",
             "group": "companies",
             "status": "live",
         },

@@ -47,6 +47,11 @@ from app.services.sa_tax_reports import (
     build_vat_201,
     report_catalog,
 )
+from app.services.sa_tax_reports import (
+    build_balance_sheet,
+    build_bank_reconciliation,
+    build_transfer_pairing,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -408,6 +413,52 @@ def trial_balance_report(
     return build_trial_balance(db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref))
 
 
+@router.get("/balance-sheet", response_model=SaSupportReport)
+def balance_sheet_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    as_at: Optional[date] = Query(None, description="Balance sheet date (default: end of selected FY)"),
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_balance_sheet(
+        db, profile_id, as_at=as_at, **_sa_params(fy_start_year, period, date_from, date_to, ref)
+    )
+
+
+@router.get("/bank-reconciliation", response_model=SaSupportReport)
+def bank_reconciliation_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_bank_reconciliation(
+        db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref)
+    )
+
+
+@router.get("/transfer-pairing", response_model=SaSupportReport)
+def transfer_pairing_report(
+    fy_start_year: Optional[int] = None,
+    period: str = Query("financial_year"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    ref: Optional[date] = None,
+    db: Session = Depends(get_db),
+    profile_id: int = Depends(get_active_profile_id),
+):
+    return build_transfer_pairing(
+        db, profile_id, **_sa_params(fy_start_year, period, date_from, date_to, ref)
+    )
+
+
 @router.get("/general-ledger", response_model=SaSupportReport)
 def general_ledger_report(
     fy_start_year: Optional[int] = None,
@@ -471,6 +522,7 @@ def sa_support_pdf(
     ledger_id: Optional[int] = None,
     db: Session = Depends(get_db),
     profile: UserProfile = Depends(get_active_profile),
+    as_at: Optional[date] = None,
 ):
     """PDF export for any SA support report key."""
     key = (report_key or "").strip().lower()
@@ -480,6 +532,8 @@ def sa_support_pdf(
     kwargs = _sa_params(fy_start_year, period, date_from, date_to, ref)
     if key == "general-ledger":
         report = builder(db, profile.id, ledger_id=ledger_id, **kwargs)
+    elif key == "balance-sheet":
+        report = builder(db, profile.id, as_at=as_at, **kwargs)
     elif key in ("fy-pack", "consolidation"):
         report = builder(db, profile.id, fy_start_year=fy_start_year, ref=ref)
     else:

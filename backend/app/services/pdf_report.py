@@ -1022,6 +1022,22 @@ def generate_monthly_overview_pdf(
     return buffer.getvalue()
 
 
+SA_COUNT_TOTAL_KEYS = {
+    "accounts", "statements", "matched", "matched_after_gap_adjustment", "differences",
+    "no_printed_balance", "transfer_legs", "paired_legs", "pairs", "unpaired_legs",
+    "cross_type_candidates", "ledgers_listed", "reports_included", "profile_count",
+}
+
+
+def _sa_total_value(key: str, value, currency: str) -> str:
+    """Counts / percentages in SA report totals are not money."""
+    if key in SA_COUNT_TOTAL_KEYS:
+        return f"{int(value):,}"
+    if "pct" in key:
+        return f"{value}%"
+    return _money(value, currency)
+
+
 def generate_sa_support_pdf(
     report,
     letterhead: Optional[PdfLetterhead] = None,
@@ -1031,11 +1047,13 @@ def generate_sa_support_pdf(
 
     assert isinstance(report, SaSupportReport)
     buffer = io.BytesIO()
-    page_w, _page_h = A4
+    wide = any(len(sec.columns) > 6 for sec in report.sections)
+    pagesize = landscape(A4) if wide else A4
+    page_w, _page_h = pagesize
     usable_w = page_w - 30 * mm
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
+        pagesize=pagesize,
         leftMargin=15 * mm,
         rightMargin=15 * mm,
         topMargin=12 * mm if letterhead else 15 * mm,
@@ -1096,7 +1114,7 @@ def generate_sa_support_pdf(
     if report.totals:
         tot_data = [["Total", "Amount"]]
         for k, v in report.totals.items():
-            tot_data.append([_escape(k.replace("_", " ")), _money(v, report.currency)])
+            tot_data.append([k.replace("_", " "), _sa_total_value(k, v, report.currency)])
         t = Table(tot_data, colWidths=[110 * mm, 60 * mm])
         t.setStyle(
             TableStyle(
@@ -1121,7 +1139,7 @@ def generate_sa_support_pdf(
         if sec.summary:
             rows = [["Field", "Value"]]
             for k, v in sec.summary.items():
-                rows.append([_escape(str(k).replace("_", " ")), _escape(str(v))])
+                rows.append([str(k).replace("_", " "), str(v)])
             st = Table(rows, colWidths=[90 * mm, 80 * mm])
             st.setStyle(
                 TableStyle(
@@ -1143,8 +1161,8 @@ def generate_sa_support_pdf(
                 for ln in sec.lines:
                     rows.append(
                         [
-                            _escape(ln.ledger_name),
-                            _escape(ln.ledger_type),
+                            ln.ledger_name,
+                            ln.ledger_type,
                             _money(ln.debit, report.currency) if ln.debit else "",
                             _money(ln.credit, report.currency) if ln.credit else "",
                         ]
@@ -1155,8 +1173,8 @@ def generate_sa_support_pdf(
                 for ln in sec.lines:
                     rows.append(
                         [
-                            _escape(ln.ledger_name),
-                            _escape(ln.ledger_type),
+                            ln.ledger_name + (f"  ({ln.note})" if ln.note else ""),
+                            ln.ledger_type,
                             _money(ln.amount, report.currency),
                         ]
                     )
@@ -1176,15 +1194,72 @@ def generate_sa_support_pdf(
                 )
             )
             story.append(lt)
+        if sec.columns and sec.rows:
+            ncol = len(sec.columns)
+            cell_st = ParagraphStyle("SaCell", parent=body_st, fontSize=6.2 if ncol > 6 else 7, leading=7.4 if ncol > 6 else 8.4)
+            head_st = ParagraphStyle("SaHead", parent=cell_st, fontName="Helvetica-Bold")
+            data = [[Paragraph(_escape(str(c)), head_st) for c in sec.columns]]
+            for r in sec.rows[:400]:
+                data.append([Paragraph(_escape("" if v is None else str(v)), cell_st) for v in r])
+            if len(sec.rows) > 400:
+                data.append([Paragraph(_escape(f"… +{len(sec.rows) - 400} more rows (see on-screen)"), cell_st)] + [""] * (ncol - 1))
+            first_w = usable_w * (0.24 if ncol > 6 else 0.3)
+            rest = (usable_w - first_w) / max(1, ncol - 1)
+            gt = Table(data, colWidths=[first_w] + [rest] * (ncol - 1), repeatRows=1)
+            gt.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                        ("GRID", (0, 0), (-1, -1), 0.15, colors.HexColor("#cbd5e1")),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                    ]
+                )
+            )
+            story.append(Spacer(1, 3))
+            story.append(gt)
         # Cap transaction dump in PDF
-        if sec.transactions:
+        if sec.transactions and any(tx.debit is not None or tx.credit is not None for tx in sec.transactions):
+            rows = [["Date", "Description", "Contra", "Debit", "Credit", "Balance"]]
+            for tx in sec.transactions[:120]:
+                rows.append(
+                    [
+                        tx.date.isoformat(),
+                        (tx.description or "")[:48],
+                        (tx.counter_ledger or "")[:30],
+                        _money(tx.debit, report.currency) if tx.debit else "",
+                        _money(tx.credit, report.currency) if tx.credit else "",
+                        _money(tx.running_balance, report.currency) if tx.running_balance is not None else "",
+                    ]
+                )
+            if len(sec.transactions) > 120:
+                rows.append(["", f"… +{len(sec.transactions) - 120} more (see on-screen)", "", "", "", ""])
+            w = usable_w
+            tt = Table(rows, colWidths=[0.11 * w, 0.37 * w, 0.2 * w, 0.105 * w, 0.105 * w, 0.11 * w], repeatRows=1)
+            tt.setStyle(
+                TableStyle(
+                    [
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f8fafc")),
+                        ("ALIGN", (3, 0), (5, -1), "RIGHT"),
+                        ("GRID", (0, 0), (-1, -1), 0.15, colors.HexColor("#e2e8f0")),
+                        ("TOPPADDING", (0, 0), (-1, -1), 1.5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                    ]
+                )
+            )
+            story.append(Spacer(1, 3))
+            story.append(tt)
+        elif sec.transactions:
             rows = [["Date", "Description", "Amount"]]
             for tx in sec.transactions[:80]:
                 desc = (tx.description or "")[:60]
                 rows.append(
                     [
                         tx.date.isoformat(),
-                        _escape(desc),
+                        desc,
                         _money(tx.amount, report.currency),
                     ]
                 )
