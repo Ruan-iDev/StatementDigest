@@ -135,7 +135,7 @@ export default function RulesPage() {
             <Label>Ledger</Label>
             <Select value={ledgerId} onChange={(e) => setLedgerId(e.target.value)}>
               <option value="">Choose…</option>
-              {ledgers.map((l) => (
+              {ledgers.filter((l) => !l.system_role).map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
                 </option>

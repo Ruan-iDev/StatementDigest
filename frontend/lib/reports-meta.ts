@@ -34,6 +34,9 @@ export type SaReportKey =
   | "irp5-emp201"
   | "related-party"
   | "trial-balance"
+  | "balance-sheet"
+  | "bank-reconciliation"
+  | "transfer-pairing"
   | "general-ledger"
   | "cashflow-indirect"
   | "fy-pack"
@@ -53,6 +56,8 @@ export type ReportMeta = {
   /** live | partial | stub — mirrors backend catalog */
   status?: "live" | "partial" | "stub";
   kind: "classic" | "sa";
+  /** Offer an "All time" period chip (double-entry reports). */
+  allTime?: boolean;
 };
 
 export const REPORTS: ReportMeta[] = [
@@ -227,26 +232,67 @@ export const REPORTS: ReportMeta[] = [
   {
     key: "trial-balance",
     title: "Trial balance",
-    description: "Cash-book TB with debit/credit mapped from ledger types.",
+    description:
+      "Double-entry TB incl. bank, loan, clearing and equity ledgers — debits = credits for every FY.",
     icon: Scale,
     accent: "lime",
-    sarsNote: "Management TB from bank categorisation.",
+    sarsNote: "Closing TB at FY end: balance-sheet ledgers cumulative, P&L for the year.",
     href: "/reports/trial-balance",
+    group: "companies",
+    status: "live",
+    kind: "sa",
+    allTime: true,
+  },
+  {
+    key: "balance-sheet",
+    title: "Balance sheet",
+    description: "Assets (bank accounts), liabilities (loan, overdrafts) and equity at FY end.",
+    icon: Landmark,
+    accent: "cyan",
+    sarsNote: "Statement of financial position from the double-entry journal (management view).",
+    href: "/reports/balance-sheet",
     group: "companies",
     status: "live",
     kind: "sa",
   },
   {
+    key: "bank-reconciliation",
+    title: "Bank reconciliation",
+    description: "Per account, per statement: ledger closing vs printed statement closing balance.",
+    icon: FileSpreadsheet,
+    accent: "amber",
+    sarsNote: "Proves every bank ledger agrees with the bank; flags missing / overlapping statements.",
+    href: "/reports/bank-reconciliation",
+    group: "companies",
+    status: "live",
+    kind: "sa",
+    allTime: true,
+  },
+  {
+    key: "transfer-pairing",
+    title: "Own-account transfers",
+    description: "Pairing of transfers between tracked accounts; unpaired legs and cross-type candidates.",
+    icon: ArrowLeftRight,
+    accent: "magenta",
+    sarsNote: "Paired legs net bank-to-bank; unpaired legs stay in the transfer clearing ledgers.",
+    href: "/reports/transfer-pairing",
+    group: "companies",
+    status: "live",
+    kind: "sa",
+    allTime: true,
+  },
+  {
     key: "general-ledger",
     title: "General ledger",
-    description: "Per-ledger transactions with running balance.",
+    description: "Every ledger incl. bank accounts: debits, credits, contra ledger and running balance.",
     icon: Layers,
     accent: "violet",
-    sarsNote: "Source drill-down: click a ledger line for transactions.",
+    sarsNote: "Source drill-down: click a line to open the categorised transactions.",
     href: "/reports/general-ledger",
     group: "companies",
     status: "live",
     kind: "sa",
+    allTime: true,
   },
   {
     key: "cashflow-indirect",

@@ -20,6 +20,39 @@ type Props = {
   meta: ReportMeta;
 };
 
+const COUNT_KEYS = new Set([
+  "accounts",
+  "statements",
+  "matched",
+  "matched_after_gap_adjustment",
+  "differences",
+  "no_printed_balance",
+  "transfer_legs",
+  "paired_legs",
+  "pairs",
+  "unpaired_legs",
+  "cross_type_candidates",
+  "ledgers_listed",
+  "reports_included",
+  "profile_count",
+]);
+
+/** Engine ledgers have no categorised source transactions to drill into. */
+const NO_DRILL_TYPES = new Set(["asset", "liability", "equity"]);
+
+function formatTotal(key: string, value: string, currency: string): string {
+  if (COUNT_KEYS.has(key)) return Number(value).toLocaleString();
+  if (key.includes("pct")) return `${Number(value).toFixed(2)}%`;
+  return formatMoney(value, currency);
+}
+
+function statusCellClass(v: unknown): string {
+  if (v === "matched") return "text-emerald-500";
+  if (v === "matched_after_gap_adjustment") return "text-amber-500";
+  if (v === "difference") return "text-destructive font-semibold";
+  return "";
+}
+
 function statusBadge(status: string) {
   if (status === "live") return <Badge variant="success">live</Badge>;
   if (status === "partial") return <Badge variant="warning">partial</Badge>;
@@ -29,6 +62,7 @@ function statusBadge(status: string) {
 export function SaReportView({ reportKey, meta }: Props) {
   const [years, setYears] = useState<FinancialYearOption[]>([]);
   const [fyYear, setFyYear] = useState<number | null>(null);
+  const [allTime, setAllTime] = useState(false);
   const [report, setReport] = useState<SaSupportReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,9 +105,10 @@ export function SaReportView({ reportKey, meta }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.reports.sa(reportKey, {
-        fy_start_year: fyYear ?? undefined,
-      });
+      const data = await api.reports.sa(
+        reportKey,
+        allTime ? { period: "all_time" } : { fy_start_year: fyYear ?? undefined }
+      );
       setReport(data);
       if (data.available_years?.length && years.length === 0) {
         setYears(data.available_years);
@@ -83,7 +118,7 @@ export function SaReportView({ reportKey, meta }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [fyYear, reportKey, years.length]);
+  }, [fyYear, reportKey, years.length, allTime]);
 
   useEffect(() => {
     if (yearsLoading) return;
@@ -94,9 +129,10 @@ export function SaReportView({ reportKey, meta }: Props) {
     setExporting(true);
     setError(null);
     try {
-      await api.reports.downloadSaPdf(reportKey, {
-        fy_start_year: fyYear ?? undefined,
-      });
+      await api.reports.downloadSaPdf(
+        reportKey,
+        allTime ? { period: "all_time" } : { fy_start_year: fyYear ?? undefined }
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "PDF export failed");
     } finally {
@@ -151,12 +187,15 @@ export function SaReportView({ reportKey, meta }: Props) {
           ) : (
             <div className="flex flex-wrap gap-2">
               {years.map((y) => {
-                const active = y.fy_start_year === fyYear;
+                const active = !allTime && y.fy_start_year === fyYear;
                 return (
                   <button
                     key={y.fy_start_year}
                     type="button"
-                    onClick={() => setFyYear(y.fy_start_year)}
+                    onClick={() => {
+                      setAllTime(false);
+                      setFyYear(y.fy_start_year);
+                    }}
                     className={cn(
                       "rounded-full border px-3 py-1.5 text-xs font-semibold transition-all",
                       active
@@ -169,6 +208,20 @@ export function SaReportView({ reportKey, meta }: Props) {
                   </button>
                 );
               })}
+              {meta.allTime ? (
+                <button
+                  type="button"
+                  onClick={() => setAllTime(true)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition-all",
+                    allTime
+                      ? "border-[hsl(var(--neon-lime))] bg-[hsl(var(--neon-lime)/0.18)] text-foreground shadow-[0_0_10px_hsl(var(--neon-lime)/0.2)]"
+                      : "border-border/70 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  All time
+                </button>
+              ) : null}
             </div>
           )}
         </CardContent>
@@ -205,8 +258,14 @@ export function SaReportView({ reportKey, meta }: Props) {
                     <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
                       {k.replace(/_/g, " ")}
                     </p>
-                    <p className="text-sm font-semibold tabular-nums">
-                      {formatMoney(v, currency)}
+                    <p
+                      className={cn(
+                        "text-sm font-semibold tabular-nums",
+                        k === "difference" && Number(v) === 0 && "text-emerald-500",
+                        k === "difference" && Number(v) !== 0 && "text-destructive"
+                      )}
+                    >
+                      {formatTotal(k, v, currency)}
                     </p>
                   </div>
                 ))}
@@ -254,7 +313,7 @@ export function SaReportView({ reportKey, meta }: Props) {
                             key={`${sec.key}-${ln.ledger_id}-${ln.ledger_name}`}
                             className="cursor-pointer border-b border-border/40 hover:bg-accent/40"
                             onClick={() => {
-                              if (!report) return;
+                              if (!report || NO_DRILL_TYPES.has(ln.ledger_type)) return;
                               setDrill({
                                 title: ln.ledger_name,
                                 ledgerId: ln.ledger_id,
@@ -287,7 +346,99 @@ export function SaReportView({ reportKey, meta }: Props) {
                   </div>
                 ) : null}
 
-                {sec.transactions.length > 0 ? (
+                {sec.columns && sec.columns.length > 0 && sec.rows && sec.rows.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-xs">
+                      <thead>
+                        <tr className="border-b border-border/70 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                          {sec.columns.map((c) => (
+                            <th key={c} className="py-2 pr-3 font-medium">
+                              {c}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sec.rows.slice(0, 500).map((row, ri) => (
+                          <tr key={`${sec.key}-r${ri}`} className="border-b border-border/40">
+                            {row.map((cell, ci) => (
+                              <td
+                                key={ci}
+                                className={cn(
+                                  "py-1.5 pr-3 tabular-nums",
+                                  typeof cell === "string" && /^-?\d+\.\d{2}$/.test(cell) && "text-right",
+                                  statusCellClass(cell)
+                                )}
+                              >
+                                {cell == null || cell === "" ? "—" : String(cell)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {sec.rows.length > 500 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Showing first 500 of {sec.rows.length} rows — export PDF or narrow the period.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {sec.transactions.length > 0 &&
+                sec.transactions.some((tx) => tx.debit != null || tx.credit != null) ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-sm">
+                      <thead>
+                        <tr className="border-b border-border/70 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                          <th className="py-2 pr-3 font-medium">Date</th>
+                          <th className="py-2 pr-3 font-medium">Description</th>
+                          <th className="py-2 pr-3 font-medium">Contra ledger</th>
+                          <th className="py-2 text-right font-medium">Debit</th>
+                          <th className="py-2 text-right font-medium">Credit</th>
+                          <th className="py-2 text-right font-medium">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sec.transactions.slice(0, 200).map((tx, i) => (
+                          <tr
+                            key={`${sec.key}-${tx.transaction_id}-${i}`}
+                            className="cursor-pointer border-b border-border/40 hover:bg-accent/40"
+                            onClick={() => {
+                              if (!report || tx.drill_ledger_id == null) return;
+                              setDrill({
+                                title: tx.counter_ledger || "Transactions",
+                                ledgerId: tx.drill_ledger_id,
+                                dateFrom: report.date_from,
+                                dateTo: report.date_to,
+                              });
+                            }}
+                          >
+                            <td className="py-1.5 pr-3 tabular-nums text-muted-foreground">
+                              {formatDate(tx.date)}
+                            </td>
+                            <td className="py-1.5 pr-3">{tx.description}</td>
+                            <td className="py-1.5 pr-3 text-muted-foreground">{tx.counter_ledger || "—"}</td>
+                            <td className="py-1.5 text-right tabular-nums">
+                              {tx.debit ? formatMoney(tx.debit, currency) : ""}
+                            </td>
+                            <td className="py-1.5 text-right tabular-nums">
+                              {tx.credit ? formatMoney(tx.credit, currency) : ""}
+                            </td>
+                            <td className="py-1.5 text-right tabular-nums text-muted-foreground">
+                              {tx.running_balance != null ? formatMoney(tx.running_balance, currency) : "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {sec.transactions.length > 200 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Showing first 200 of {sec.transactions.length} postings. Balance column is debit-positive.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : sec.transactions.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[640px] text-sm">
                       <thead>
@@ -300,9 +451,9 @@ export function SaReportView({ reportKey, meta }: Props) {
                         </tr>
                       </thead>
                       <tbody>
-                        {sec.transactions.slice(0, 200).map((tx) => (
+                        {sec.transactions.slice(0, 200).map((tx, i) => (
                           <tr
-                            key={tx.transaction_id}
+                            key={`${sec.key}-${tx.transaction_id}-${i}`}
                             className="cursor-pointer border-b border-border/40 hover:bg-accent/40"
                             onClick={() => {
                               if (!report || tx.drill_ledger_id == null) return;

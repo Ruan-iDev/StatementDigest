@@ -197,8 +197,32 @@ export type Ledger = {
   budget_monthly: string | null;
   budget_annual: string | null;
   sort_order: number;
+  /** Engine-owned double-entry ledger (bank_account, opening_equity, …) — never offered for categorising. */
+  system_role?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/** Real bank / loan account (double-entry bank side). */
+export type BankAccount = {
+  id: number;
+  account_number: string;
+  name: string;
+  bank_name: string | null;
+  product: string | null;
+  account_kind: "asset" | "liability" | string;
+  ledger_id: number | null;
+  ledger_name: string | null;
+  bank_profile_id: number | null;
+  opening_balance: string | null;
+  opening_date: string | null;
+  opening_source: string | null;
+  statements: number;
+  transactions: number;
+  first_period_start: string | null;
+  last_period_end: string | null;
+  last_printed_closing: string | null;
+  ledger_balance: string | null;
 };
 
 export type BankProfile = {
@@ -295,6 +319,10 @@ export type SaReportTxnLine = {
   source_file: string | null;
   drill_ledger_id: number | null;
   running_balance: string | null;
+  debit?: string | null;
+  credit?: string | null;
+  counter_ledger?: string | null;
+  entry_kind?: string | null;
 };
 
 export type SaReportLedgerLine = {
@@ -316,6 +344,9 @@ export type SaReportSection = {
   transactions: SaReportTxnLine[];
   summary: Record<string, string>;
   stub_message: string | null;
+  /** Generic table (bank reconciliation, pairing lists). */
+  columns?: string[];
+  rows?: (string | number | null)[][];
 };
 
 export type SaSupportReport = {
@@ -787,6 +818,11 @@ export const api = {
     archive: (id: number) =>
       request<Ledger>(`/ledgers/${id}`, { method: "DELETE" }),
   },
+  bankAccounts: {
+    list: () => request<BankAccount[]>("/bank-accounts"),
+    update: (id: number, body: { name?: string; account_kind?: string }) =>
+      request<BankAccount>(`/bank-accounts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  },
   bankProfiles: {
     list: () => request<BankProfile[]>("/bank-profiles"),
     get: (id: number) => request<BankProfile>(`/bank-profiles/${id}`),
@@ -1013,6 +1049,7 @@ export const api = {
         date_from?: string;
         date_to?: string;
         ledger_id?: number | string;
+        as_at?: string;
       } = {}
     ) => {
       const q = new URLSearchParams();
@@ -1030,6 +1067,7 @@ export const api = {
         date_from?: string;
         date_to?: string;
         ledger_id?: number | string;
+        as_at?: string;
       } = {}
     ) => {
       const q = new URLSearchParams();
@@ -1037,7 +1075,11 @@ export const api = {
         if (v !== undefined && v !== "") q.set(k, String(v));
       });
       const label =
-        params.fy_start_year != null ? `FY${params.fy_start_year}` : "report";
+        params.fy_start_year != null
+          ? `FY${params.fy_start_year}`
+          : params.period === "all_time"
+            ? "all_time"
+            : "report";
       await downloadAuthenticated(
         `/reports/sa/${key}/pdf?${q}`,
         `${key}_${label}.pdf`

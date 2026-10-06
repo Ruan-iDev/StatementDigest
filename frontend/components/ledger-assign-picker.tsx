@@ -79,7 +79,8 @@ export function LedgerAssignPicker({
   const options = useMemo(
     () =>
       [...ledgers]
-        .filter((l) => !l.is_archived)
+        // Double-entry engine ledgers (bank accounts, equity, suspense) are not categories
+        .filter((l) => !l.is_archived && !l.system_role)
         .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)),
     [ledgers]
   );
